@@ -108,20 +108,20 @@ export default function ChatPanel({
         )}
         {turns.map((t, i) => (
           <div key={i} style={{ marginBottom: 18 }}>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <div style={{ background: "var(--bg-inset)", border: "1px solid var(--border)", borderRadius: "10px 10px 2px 10px", padding: "8px 12px", maxWidth: "85%" }}>
-                {t.question}
-              </div>
-            </div>
-            <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "0 10px 10px 10px", padding: "12px 14px", marginTop: 8 }}>
-              {t.mode && (
-                <div style={{ marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
-                  <span className={`badge ${t.mode === "NoContext" ? "red" : t.mode === "Graph" ? "green" : "purple"}`}>
-                    {t.mode}
-                  </span>
-                  {streaming && i === turns.length - 1 && <span className="spinner" />}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div className="rounded-[10px_10px_2px_10px] border border-border bg-inset px-3 py-2" style={{ maxWidth: "85%" }}>
+                  {t.question}
                 </div>
-              )}
+              </div>
+              <div className="mt-2 rounded-[0_10px_10px_10px] border border-border bg-bg px-3.5 py-3">
+                {t.mode && (
+                  <div style={{ marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
+                    <span className={`badge ${t.mode === "NoContext" ? "badge-red" : t.mode === "Graph" ? "badge-green" : "badge-purple"}`}>
+                      {t.mode}
+                    </span>
+                    {streaming && i === turns.length - 1 && <span className="spinner" />}
+                  </div>
+                )}
               <div className="markdown">
                 {t.answer === "" && streaming && i === turns.length - 1 ? (
                   <span className="muted">thinking…</span>
@@ -142,11 +142,11 @@ export default function ChatPanel({
               {t.warnings.length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   {t.warnings.map((w, j) => (
-                    <div key={j} className="badge yellow" style={{ margin: 2 }}>{w}</div>
+                    <div key={j} className="badge badge-yellow" style={{ margin: 2 }}>{w}</div>
                   ))}
                 </div>
               )}
-              {t.error && <div style={{ color: "var(--red)", marginTop: 8 }}>{t.error}</div>}
+              {t.error && <div className="mt-2 text-danger">{t.error}</div>}
             </div>
           </div>
         ))}
@@ -162,9 +162,9 @@ export default function ChatPanel({
           disabled={streaming}
         />
         {streaming ? (
-          <button type="button" className="btn danger" onClick={stop}>Stop</button>
+          <button type="button" className="btn btn-danger" onClick={stop}>Stop</button>
         ) : (
-          <button type="submit" className="btn primary" disabled={!input.trim()}>Ask</button>
+          <button type="submit" className="btn btn-primary" disabled={!input.trim()}>Ask</button>
         )}
       </form>
     </div>

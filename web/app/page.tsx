@@ -13,8 +13,8 @@ export default function Home() {
   }, [token, router]);
 
   return (
-    <div className="container">
-      <div className="muted">Loading…</div>
+    <div className="mx-auto max-w-[1400px] px-5 py-5">
+      <div className="text-dim">Loading…</div>
     </div>
   );
 }

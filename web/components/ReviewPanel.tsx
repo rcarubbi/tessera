@@ -48,7 +48,7 @@ export default function ReviewPanel({
   };
 
   if (loading && !review) return <div className="panel muted">Loading review queue…</div>;
-  if (error && !review) return <div className="panel" style={{ color: "var(--red)" }}>{error}</div>;
+  if (error && !review) return <div className="panel text-danger">{error}</div>;
   if (!review) return null;
 
   return (
@@ -56,7 +56,7 @@ export default function ReviewPanel({
       <div className="muted" style={{ marginBottom: 12 }}>
         Review queue for commit <code>{review.commitSha.slice(0, 10)}</code> — {review.items.length} node(s) flagged.
       </div>
-      {error && <div style={{ color: "var(--red)", marginBottom: 12 }}>{error}</div>}
+      {error && <div className="mb-3 text-danger">{error}</div>}
       {review.items.length === 0 && <div className="panel muted">Queue is empty. All nodes reviewed.</div>}
       {review.items.map((item) => (
         <div key={item.nodeId} className="card" style={{ marginBottom: 12 }}>
@@ -66,7 +66,7 @@ export default function ReviewPanel({
               <span className="path"> {item.key}</span>
               <div className="muted" style={{ fontSize: 12 }}>{item.path}:{item.line}–{item.endLine}</div>
             </div>
-            <span className={`badge ${item.confidence < 0.7 ? "yellow" : "orange"}`}>confidence {item.confidence.toFixed(2)}</span>
+            <span className={`badge ${item.confidence < 0.7 ? "badge-yellow" : "badge-orange"}`}>confidence {item.confidence.toFixed(2)}</span>
           </div>
 
           <div className="markdown" style={{ marginTop: 10 }}>
@@ -85,20 +85,20 @@ export default function ReviewPanel({
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             {editingId === item.nodeId ? (
               <>
-                <button className="btn primary small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "edit")}>
+                <button className="btn btn-primary btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "edit")}>
                   Save version
                 </button>
                 <button className="btn small" onClick={() => setEditingId(null)}>Cancel</button>
               </>
             ) : (
               <>
-                <button className="btn primary small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "accept")}>
+                <button className="btn btn-primary btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "accept")}>
                   Accept
                 </button>
                 <button className="btn small" disabled={busyId === item.nodeId} onClick={() => { setEditingContent(item.content); setEditingId(item.nodeId); }}>
                   Edit
                 </button>
-                <button className="btn danger small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "dismiss")}>
+                <button className="btn btn-danger btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "dismiss")}>
                   Dismiss
                 </button>
               </>

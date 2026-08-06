@@ -18,6 +18,10 @@ const KIND_COLORS: Record<string, string> = {
 };
 
 type Pos = { x: number; y: number };
+type View = { scale: number; x: number; y: number };
+
+const MIN_SCALE = 0.15;
+const MAX_SCALE = 6;
 
 export default function GraphView({
   repoId,
@@ -37,8 +41,11 @@ export default function GraphView({
   const [module, setModule] = useState<string>("");
   const [edgeTypes, setEdgeTypes] = useState<Set<string>>(new Set());
   const [expandDepth, setExpandDepth] = useState(1);
-  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [hover, setHover] = useState<{ key: string; screenX: number; screenY: number } | null>(null);
   const [pos, setPos] = useState<Map<string, Pos> | null>(null);
+  const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0 });
+
+  const dragRef = useRef<{ startX: number; startY: number; viewX: number; viewY: number; moved: boolean } | null>(null);
 
   const commitParam = commit ? `&commit=${encodeURIComponent(commit)}` : "";
 
@@ -48,6 +55,8 @@ export default function GraphView({
     apiGet<Graph>(`/api/repositories/${repoId}/graph${commitParam}`)
       .then((g) => {
         setGraph(g);
+        setView({ scale: 1, x: 0, y: 0 });
+        setHover(null);
         setEdgeTypes((prev) => (prev.size === 0 ? new Set(g.edges.map((e) => e.type)) : prev));
       })
       .catch((e) => setError(e.message))
@@ -74,9 +83,13 @@ export default function GraphView({
     );
     const keys = filteredNodes.map((n) => n.key);
     const pairs = filteredEdges.map((e) => [e.from, e.to] as [string, string]);
-    const layout = runLayout(keys, pairs, width, height);
-    setPos(layout);
+    setPos(runLayout(keys, pairs, width, height));
   }, [graph, module, edgeTypes]);
+
+  const kinds = useMemo(() => {
+    if (!graph) return [] as string[];
+    return [...new Set(graph.nodes.map((n) => n.kind))].sort();
+  }, [graph]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -88,17 +101,28 @@ export default function GraphView({
     const h = canvas.clientHeight;
     if (canvas.width !== w * dpr) canvas.width = w * dpr;
     if (canvas.height !== h * dpr) canvas.height = h * dpr;
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.x, dpr * view.y);
 
     const neighbors = selectedKey ? neighborSet(graph, selectedKey, expandDepth, edgeTypes) : null;
+    const focus = hover?.key ?? selectedKey;
+    const focusNeighbors = focus ? neighborSet(graph, focus, 1, edgeTypes) : null;
 
     for (const e of graph.edges) {
       const a = pos.get(e.from);
       const b = pos.get(e.to);
       if (!a || !b) continue;
       const active = neighbors ? neighbors.has(e.from) && neighbors.has(e.to) : true;
-      ctx.strokeStyle = active ? "rgba(139,148,158,0.5)" : "rgba(139,148,158,0.08)";
+      const focusActive = focusNeighbors ? focusNeighbors.has(e.from) && focusNeighbors.has(e.to) : true;
+      ctx.strokeStyle = focusNeighbors
+        ? focusActive
+          ? "rgba(139,148,158,0.8)"
+          : "rgba(139,148,158,0.06)"
+        : active
+          ? "rgba(139,148,158,0.5)"
+          : "rgba(139,148,158,0.08)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
@@ -110,11 +134,11 @@ export default function GraphView({
       const p = pos.get(n.key);
       if (!p) continue;
       const dimmed = neighbors ? !neighbors.has(n.key) : false;
+      const hovered = hover?.key === n.key;
       const isSelected = selectedKey === n.key;
-      const isHover = hoverKey === n.key;
       const color = KIND_COLORS[n.kind] ?? "#8b949e";
-      const r = isSelected ? 9 : isHover ? 8 : 6;
-      ctx.globalAlpha = dimmed ? 0.25 : 1;
+      const r = isSelected ? 9 : hovered ? 8 : 6;
+      ctx.globalAlpha = focusNeighbors ? (focusNeighbors.has(n.key) ? 1 : 0.2) : dimmed ? 0.25 : 1;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -123,13 +147,19 @@ export default function GraphView({
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
         ctx.stroke();
+      } else if (hovered) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
-      ctx.fillStyle = "#e6edf3";
-      ctx.font = "11px ui-monospace, Consolas, monospace";
-      ctx.fillText(n.symbol, p.x + r + 4, p.y + 4);
+      if (!dimmed && view.scale >= 0.4) {
+        ctx.fillStyle = hovered || isSelected ? "#ffffff" : "#e6edf3";
+        ctx.font = "11px ui-monospace, Consolas, monospace";
+        ctx.fillText(n.symbol, p.x + r + 4, p.y + 4);
+      }
       ctx.globalAlpha = 1;
     }
-  }, [graph, pos, selectedKey, expandDepth, edgeTypes, hoverKey]);
+  }, [graph, pos, selectedKey, expandDepth, edgeTypes, hover, view.scale]);
 
   useEffect(() => {
     draw();
@@ -138,17 +168,19 @@ export default function GraphView({
   const worldFromEvent = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    return { x: (mx - view.x) / view.scale, y: (my - view.y) / view.scale, mx, my };
   };
 
-  const hitTest = (p: { x: number; y: number }): string | null => {
+  const hitTest = (wx: number, wy: number): string | null => {
     if (!graph || !pos) return null;
     let best: string | null = null;
-    let bestDist = 20;
+    let bestDist = 22 / view.scale;
     for (const n of graph.nodes) {
       const np = pos.get(n.key);
       if (!np) continue;
-      const d = Math.hypot(np.x - p.x, np.y - p.y);
+      const d = Math.hypot(np.x - wx, np.y - wy);
       if (d < bestDist) {
         bestDist = d;
         best = n.key;
@@ -157,14 +189,69 @@ export default function GraphView({
     return best;
   };
 
-  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setHoverKey(hitTest(worldFromEvent(e)));
+  const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    setView((v) => {
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
+      const wx = (mx - v.x) / v.scale;
+      const wy = (my - v.y) / v.scale;
+      return { scale, x: mx - wx * scale, y: my - wy * scale };
+    });
   };
 
-  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const hit = hitTest(worldFromEvent(e));
+  const onMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y, moved: false };
+  };
+
+  const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    const { mx, my, x, y } = worldFromEvent(e);
+    if (drag) {
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      if (drag.moved) {
+        setView({ ...view, x: drag.viewX + dx, y: drag.viewY + dy });
+      }
+      setHover(null);
+      return;
+    }
+    setHover({ key: hitTest(x, y) ?? "", screenX: mx, screenY: my });
+  };
+
+  const onMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || drag.moved) return;
+    const { x, y } = worldFromEvent(e);
+    const hit = hitTest(x, y);
     if (hit) onSelect(hit);
   };
+
+  const onMouseLeave = () => {
+    dragRef.current = null;
+    setHover(null);
+  };
+
+  const zoomBy = (factor: number) => {
+    const canvas = canvasRef.current!;
+    const cx = canvas.clientWidth / 2;
+    const cy = canvas.clientHeight / 2;
+    setView((v) => {
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
+      const wx = (cx - v.x) / v.scale;
+      const wy = (cy - v.y) / v.scale;
+      return { scale, x: cx - wx * scale, y: cy - wy * scale };
+    });
+  };
+
+  const resetView = () => setView({ scale: 1, x: 0, y: 0 });
 
   const toggleEdgeType = (type: string) => {
     setEdgeTypes((prev) => {
@@ -175,55 +262,94 @@ export default function GraphView({
     });
   };
 
+  const hovering = hover?.key ? graph?.nodes.find((n) => n.key === hover.key) : null;
+
   if (loading) {
-    return <div className="panel muted">Loading graph…</div>;
+    return <div className="panel text-dim">Loading graph…</div>;
   }
   if (error) {
-    return <div className="panel" style={{ color: "var(--red)" }}>{error}</div>;
+    return <div className="card card-error text-danger">{error}</div>;
   }
   if (!graph || graph.nodes.length === 0) {
-    return <div className="panel muted">No graph available for this snapshot.</div>;
+    return <div className="panel text-dim">No graph available for this snapshot.</div>;
   }
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12, padding: 10, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="muted">Module:</span>
-          <select value={module} onChange={(e) => setModule(e.target.value)}>
+      <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg border border-border bg-panel px-3 py-2.5">
+        <label className="flex items-center gap-1.5 text-[13px]">
+          <span className="text-dim">Module:</span>
+          <select className="field" value={module} onChange={(e) => setModule(e.target.value)}>
             <option value="">All</option>
             {modules.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
         </label>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="flex flex-wrap items-center gap-3">
           {[...new Set(graph.edges.map((e) => e.type))].sort().map((t) => (
-            <label key={t} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+            <label key={t} className="flex items-center gap-1 text-xs">
               <input type="checkbox" checked={edgeTypes.has(t)} onChange={() => toggleEdgeType(t)} />
               {t}
             </label>
           ))}
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="muted">Expand:</span>
-          <select value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
+        <label className="flex items-center gap-1.5 text-[13px]">
+          <span className="text-dim">Expand:</span>
+          <select className="field" value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
             <option value={1}>1 hop</option>
             <option value={2}>2 hops</option>
             <option value={3}>3 hops</option>
           </select>
         </label>
+        <div className="ml-auto flex items-center gap-1">
+          <button className="btn btn-small" onClick={() => zoomBy(1.3)} title="Zoom in">+</button>
+          <button className="btn btn-small" onClick={() => zoomBy(1 / 1.3)} title="Zoom out">−</button>
+          <button className="btn btn-small" onClick={resetView} title="Reset view">Reset</button>
+        </div>
       </div>
-      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+
+      <div className="relative overflow-hidden rounded-lg border border-border bg-panel">
         <canvas
           ref={canvasRef}
-          style={{ width: "100%", height: 620, display: "block", cursor: "pointer" }}
-          onMouseMove={onMove}
-          onMouseLeave={() => setHoverKey(null)}
-          onClick={onClick}
+          style={{ width: "100%", height: 620, display: "block", cursor: dragRef.current?.moved ? "grabbing" : "grab", touchAction: "none" }}
+          onWheel={onWheel}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseLeave}
+          onDoubleClick={resetView}
         />
-        <div className="muted" style={{ padding: "6px 10px", fontSize: 12 }}>
-          {graph.nodes.length} nodes · {graph.edges.length} edges · {selectedKey ? `focusing ${selectedKey}` : "click a node to inspect"}
+
+        {hovering && (
+          <div
+            className="pointer-events-none absolute z-10 max-w-[320px] rounded-md border border-border bg-inset px-3 py-2 text-xs shadow-lg"
+            style={{
+              left: Math.min(hover!.screenX + 12, (canvasRef.current?.clientWidth ?? 600) - 200),
+              top: Math.max(hover!.screenY - 40, 8),
+            }}
+          >
+            <div className="font-semibold text-fg">{hovering.symbol}</div>
+            <div className="truncate font-mono text-dim">{hovering.path}:{hovering.line}</div>
+            <div className="mt-0.5 text-dim">{hovering.kind} · {hovering.language}</div>
+          </div>
+        )}
+
+        <div className="absolute left-3 top-3 rounded-md border border-border bg-panel/90 px-3 py-2 text-[11px]">
+          <div className="mb-1 font-semibold text-dim">Kinds</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {kinds.map((k) => (
+              <div key={k} className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: KIND_COLORS[k] ?? "#8b949e" }} />
+                {k}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-border bg-inset px-2.5 py-1.5 text-xs text-dim">
+          {graph.nodes.length} nodes · {graph.edges.length} edges ·{" "}
+          {selectedKey ? `focusing ${selectedKey}` : "drag to pan · wheel to zoom · double-click to reset · click a node to inspect"}
         </div>
       </div>
     </div>
@@ -235,11 +361,15 @@ function runLayout(keys: string[], edges: [string, string][], width: number, hei
   const n = keys.length;
   keys.forEach((k, i) => {
     const angle = (i / Math.max(n, 1)) * Math.PI * 2;
-    pos.set(k, { x: width / 2 + Math.cos(angle) * width * 0.32, y: height / 2 + Math.sin(angle) * height * 0.32 });
+    const jitter = Math.sin(i * 127.1) * 0.15;
+    pos.set(k, {
+      x: width / 2 + Math.cos(angle + jitter) * width * 0.32,
+      y: height / 2 + Math.sin(angle + jitter) * height * 0.32,
+    });
   });
-  const speed = 0.06;
+  const speed = 0.07;
   const center = { x: width / 2, y: height / 2 };
-  for (let iter = 0; iter < 300; iter++) {
+  for (let iter = 0; iter < 400; iter++) {
     const disp = new Map<string, { x: number; y: number }>();
     keys.forEach((k) => disp.set(k, { x: 0, y: 0 }));
     for (let i = 0; i < n; i++) {

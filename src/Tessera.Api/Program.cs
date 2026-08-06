@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Tessera.Api;
+using Tessera.Domain.Enums;
 using Tessera.Infrastructure;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Auth;
@@ -123,6 +124,24 @@ app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, HttpContext 
         .Where(s => s.RepositoryId == id)
         .OrderByDescending(s => s.CreatedAt)
         .ToListAsync());
+});
+
+app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, HttpContext context, TesseraDbContext db) =>
+{
+    var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
+    if (guarded is not null) return guarded;
+
+    var repo = await db.Repositories.FirstOrDefaultAsync(r => r.Id == id);
+    if (repo is null)
+    {
+        return Results.NotFound(new { error = "Repository not found" });
+    }
+
+    repo.Status = ProcessingStatus.Pending;
+    repo.LastProcessedCommit = null;
+    repo.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(repo);
 });
 
 app.MapGitHubEndpoints();

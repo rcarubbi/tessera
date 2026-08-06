@@ -56,7 +56,7 @@ export default function EntityPanel({
       </div>
 
       {loading && <div className="muted" style={{ marginTop: 12 }}>Loading…</div>}
-      {error && <div style={{ color: "var(--red)", marginTop: 12 }}>{error}</div>}
+      {error && <div className="mt-3 text-danger">{error}</div>}
 
       {node && (
         <div style={{ marginTop: 12 }}>
@@ -70,7 +70,7 @@ export default function EntityPanel({
             {node.path}:{node.line}–{node.endLine}
           </div>
           {node.content && (
-            <div className="markdown" style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            <div className="markdown mt-3 border-t border-border pt-3">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
             </div>
           )}
@@ -115,17 +115,17 @@ export default function EntityPanel({
 }
 
 function confidenceTone(c: number) {
-  return c < 0.7 ? "yellow" : "green";
+  return c < 0.7 ? "badge-yellow" : "badge-green";
 }
 
 function reviewTone(s: string) {
   switch (s) {
     case "needs_review":
     case "stale":
-      return "red";
+      return "badge-red";
     case "accepted":
     case "edited":
-      return "green";
+      return "badge-green";
     default:
       return "";
   }

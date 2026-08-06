@@ -7,6 +7,8 @@ import DiffView from "@/components/DiffView";
 import ReviewPanel from "@/components/ReviewPanel";
 import ChatPanel from "@/components/ChatPanel";
 import EntityPanel from "@/components/EntityPanel";
+import StatusBadge from "@/components/StatusBadge";
+import ReprocessButton from "@/components/ReprocessButton";
 import { apiGet } from "@/lib/api";
 import type { Repository, Snapshot } from "@/lib/types";
 
@@ -21,11 +23,15 @@ export default function RepoHub({ repoId }: { repoId: string }) {
   const [snapshotsLoading, setSnapshotsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadRepo = useCallback(() => {
     apiGet<Repository[]>("/api/repositories")
       .then((repos) => setRepo(repos.find((r) => r.id === repoId) ?? null))
       .catch((e) => setError(e.message));
   }, [repoId]);
+
+  useEffect(() => {
+    loadRepo();
+  }, [loadRepo]);
 
   useEffect(() => {
     setSnapshotsLoading(true);
@@ -41,39 +47,60 @@ export default function RepoHub({ repoId }: { repoId: string }) {
 
   if (error) {
     return (
-      <div className="container">
-        <div className="card" style={{ color: "var(--red)" }}>{error}</div>
+      <div className="mx-auto max-w-[1400px] px-5 py-5">
+        <div className="card card-error text-danger">{error}</div>
       </div>
     );
   }
 
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "graph", label: "Graph" },
+    { id: "diff", label: "Diff" },
+    { id: "review", label: "Review" },
+    { id: "chat", label: "Chat" },
+  ];
+
   return (
-    <div className="container">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ marginBottom: 4 }}>{repo?.fullName ?? "…"}</h1>
-          <div className="muted">
-            {repo ? (
-              <>
-                {repo.nodeCount} nodes · {repo.edgeCount} edges · branch {repo.defaultBranch}
-              </>
-            ) : (
-              "…"
-            )}
+    <div className="mx-auto max-w-[1400px] px-5 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="min-w-0">
+            <h1 className="mb-1 text-xl font-bold">{repo?.fullName ?? "…"}</h1>
+            <div className="text-sm text-dim">
+              {repo ? (
+                <>
+                  {repo.nodeCount} nodes · {repo.edgeCount} edges · branch {repo.defaultBranch}
+                </>
+              ) : (
+                "…"
+              )}
+            </div>
           </div>
+          {repo && <StatusBadge status={repo.status} />}
         </div>
-        <SnapshotSelector snapshots={snapshots} commit={commit} onChange={setCommit} loading={snapshotsLoading} />
+        <div className="flex items-center gap-3">
+          <ReprocessButton repoId={repoId} fullName={repo?.fullName ?? repoId} onReprocessed={loadRepo} />
+          <SnapshotSelector snapshots={snapshots} commit={commit} onChange={setCommit} loading={snapshotsLoading} />
+        </div>
       </div>
 
-      <div className="tabs" style={{ marginTop: 20 }}>
-        <button className={`tab ${tab === "graph" ? "active" : ""}`} onClick={() => setTab("graph")}>Graph</button>
-        <button className={`tab ${tab === "diff" ? "active" : ""}`} onClick={() => setTab("diff")}>Diff</button>
-        <button className={`tab ${tab === "review" ? "active" : ""}`} onClick={() => setTab("review")}>Review</button>
-        <button className={`tab ${tab === "chat" ? "active" : ""}`} onClick={() => setTab("chat")}>Chat</button>
+      <div className="mb-4 mt-5 flex gap-1 border-b border-border">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`cursor-pointer border-0 border-b-2 bg-transparent px-4 py-2 text-sm ${
+              tab === t.id ? "border-accent text-fg" : "border-transparent text-dim hover:text-fg"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      <div style={{ display: "flex", gap: 16, alignItems: "stretch" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex items-stretch gap-4">
+        <div className="min-w-0 flex-1">
           {tab === "graph" && (
             <GraphView repoId={repoId} commit={commit} onSelect={openEntity} selectedKey={selectedKey} />
           )}
@@ -82,7 +109,7 @@ export default function RepoHub({ repoId }: { repoId: string }) {
           {tab === "chat" && <ChatPanel repoId={repoId} commit={commit} onSelect={openEntity} />}
         </div>
         {selectedKey && (
-          <div style={{ width: 420, flexShrink: 0 }}>
+          <div className="w-[420px] shrink-0">
             <EntityPanel repoId={repoId} commit={commit} nodeKey={selectedKey} onClose={() => setSelectedKey(null)} />
           </div>
         )}

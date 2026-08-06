@@ -50,9 +50,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 420, marginTop: 80 }}>
+    <div className="mx-auto mt-20 w-full max-w-[420px] px-5">
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Tessera</h1>
+        <h1 className="mt-0 text-2xl font-bold">Tessera</h1>
         <p className="muted">Architecture knowledge graph for legacy systems. Sign in with GitHub or use the dashboard access key.</p>
         {githubEnabled && (
           <button className="btn" type="button" onClick={startGithub} disabled={checking}>
@@ -60,18 +60,19 @@ export default function LoginPage() {
           </button>
         )}
         {githubEnabled && (
-          <div style={{ textAlign: "center", color: "var(--muted, #888)", margin: "12px 0", fontSize: 12 }}>or</div>
+          <div style={{ textAlign: "center", color: "#888", margin: "12px 0", fontSize: 12 }}>or</div>
         )}
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input
+            className="field"
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Access key"
             autoFocus
           />
-          {error && <div className="badge red">{error}</div>}
-          <button className="btn primary" type="submit" disabled={checking || !key.trim()}>
+          {error && <div className="badge badge-red">{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={checking || !key.trim()}>
             {checking ? "Signing in…" : "Sign in"}
           </button>
         </form>

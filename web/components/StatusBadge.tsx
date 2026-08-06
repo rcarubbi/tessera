@@ -2,8 +2,17 @@
 
 const STATUS_LABELS = ["Pending", "Cloning", "Parsing", "Analyzing", "Indexing", "Completed", "Failed"];
 
+const TONES: Record<string, string> = {
+  Pending: "badge",
+  Cloning: "badge-yellow",
+  Parsing: "badge-yellow",
+  Analyzing: "badge-yellow",
+  Indexing: "badge-yellow",
+  Completed: "badge-green",
+  Failed: "badge-red",
+};
+
 export default function StatusBadge({ status }: { status: number }) {
   const label = STATUS_LABELS[status] ?? `Status ${status}`;
-  const tone = status >= 5 ? "green" : status === 6 ? "red" : "yellow";
-  return <span className={`badge ${tone}`}>{label}</span>;
+  return <span className={`badge ${TONES[label] ?? "badge-red"}`}>{label}</span>;
 }

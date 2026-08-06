@@ -9,30 +9,33 @@ export function TopBar() {
   const pathname = usePathname();
 
   return (
-    <div className="topbar">
-      <Link href={token ? "/repos" : "/login"} className="brand">
+    <header className="flex items-center gap-3 border-b border-border bg-panel px-5 py-2.5">
+      <Link href={token ? "/repos" : "/login"} className="text-base font-bold text-fg no-underline">
         Tessera
       </Link>
       {token && (
         <>
-          <Link href="/repos" className={pathname === "/repos" ? "active" : ""}>
+          <Link
+            href="/repos"
+            className={`text-sm ${pathname === "/repos" ? "text-fg" : "text-dim hover:text-fg"}`}
+          >
             Repositories
           </Link>
-          <div className="spacer" />
+          <div className="flex-1" />
           {user && (
-            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <span className="flex items-center gap-1.5 text-[13px]">
               {user.avatarUrl && (
-                <img src={user.avatarUrl} width={20} height={20} alt="" style={{ borderRadius: "50%" }} />
+                <img src={user.avatarUrl} width={20} height={20} alt="" className="rounded-full" />
               )}
               <span>{user.name}</span>
               {user.isAdmin && <span className="badge">admin</span>}
             </span>
           )}
-          <button className="btn small" onClick={logout}>
+          <button className="btn btn-small" onClick={logout}>
             Sign out
           </button>
         </>
       )}
-    </div>
+    </header>
   );
 }

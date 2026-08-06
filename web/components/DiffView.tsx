@@ -71,7 +71,7 @@ export default function DiffView({
         {loading && <span className="spinner" />}
       </div>
 
-      {error && <div className="panel" style={{ color: "var(--red)", marginBottom: 12 }}>{error}</div>}
+      {error && <div className="panel mb-3 text-danger">{error}</div>}
 
       {diff && (
         <>
