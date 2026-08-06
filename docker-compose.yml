@@ -79,10 +79,13 @@ services:
       # GitHub App config (used to clone private repositories with an installation token):
       GitHub__AppId: "${GITHUB_APP_ID:-}"
       GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
-      # LLM providers (leave empty for structural-only / rule-based mode):
-      # Ai__Providers__0__ApiKey: ""
-      # Ai__Providers__1__ApiKey: ""
-      # Ai__Primary: "deepseek"
+      # LLM providers (Gemini free tier; key in .env as AI_GEMINI_API_KEY):
+      Ai__Providers__0__Name: "gemini"
+      Ai__Providers__0__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
+      Ai__Providers__0__ApiKey: "${AI_GEMINI_API_KEY:-}"
+      Ai__Providers__0__Model: "gemini-3.1-flash-lite"
+      Ai__Primary: "gemini"
+      Ai__RequestsPerMinute: "12"
       # Ai__Fallback: "qwen"
     volumes:
       - workdata:/app/work

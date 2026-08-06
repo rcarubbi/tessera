@@ -37,4 +37,5 @@ public sealed class AiOptions
     public int MaxRetries { get; set; } = 3;
     public int TopK { get; set; } = 5;
     public double SimilarityThreshold { get; set; } = 0.5;
+    public int RequestsPerMinute { get; set; }
 }

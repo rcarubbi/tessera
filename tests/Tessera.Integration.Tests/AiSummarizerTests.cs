@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Tessera.Domain.Parsing;
 using Tessera.Domain.Ports;
@@ -71,7 +72,8 @@ public sealed class AiSummarizerTests
             registry,
             new RuleBasedSummarizer(),
             new TokenBudgetTracker(Options.Create(new AiOptions { DailyBudgetTokens = 10_000_000 })),
-            Options.Create(new AiOptions { ComplexityThresholdLines = 200 }));
+            Options.Create(new AiOptions { ComplexityThresholdLines = 200 }),
+            NullLogger<AiSummarizer>.Instance);
 
         var small = Entity();
         var complex = Entity(EndLine: 500);
@@ -116,7 +118,8 @@ public sealed class AiSummarizerTests
                 LargeTier = "deepseek-large",
                 ComplexityThresholdLines = 200,
                 DailyBudgetTokens = 10_000_000
-            }));
+            }),
+            NullLogger<AiSummarizer>.Instance);
     }
 
     private static ParsedEntity Entity(int StartLine = 1, int EndLine = 10) => new()

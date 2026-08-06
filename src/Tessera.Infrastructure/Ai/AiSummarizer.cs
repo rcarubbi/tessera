@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tessera.Domain.Merkle;
 using Tessera.Domain.Parsing;
@@ -20,17 +21,22 @@ public sealed class AiSummarizer : ISemanticSummarizer
     private readonly RuleBasedSummarizer _ruleBased;
     private readonly TokenBudgetTracker _budget;
     private readonly AiOptions _options;
+    private readonly ILogger<AiSummarizer> _log;
+    private readonly object _throttleLock = new();
+    private long _lastCallTicks = Environment.TickCount64;
 
     public AiSummarizer(
         IProviderRegistry providers,
         RuleBasedSummarizer ruleBased,
         TokenBudgetTracker budget,
-        IOptions<AiOptions> options)
+        IOptions<AiOptions> options,
+        ILogger<AiSummarizer> log)
     {
         _providers = providers;
         _ruleBased = ruleBased;
         _budget = budget;
         _options = options.Value;
+        _log = log;
     }
 
     public string PromptVersion => PromptVersionConst;
@@ -58,24 +64,29 @@ public sealed class AiSummarizer : ISemanticSummarizer
 
         try
         {
+            await ThrottleAsync(ct);
             var content = await RetryPolicy.WithRetryAsync(ct2 => primary.CompleteAsync(messages, ct2), _options.MaxRetries, ct: ct);
             return ParseResponse(content, primary);
         }
-        catch (Exception) when (_providers.Fallback is not null)
+        catch (Exception ex) when (_providers.Fallback is not null)
         {
+            _log.LogWarning(ex, "Primary provider {provider} failed for {entity}, falling back", primary.Name, entity.Key);
             var fallback = _providers.Fallback;
             try
             {
+                await ThrottleAsync(ct);
                 var content = await fallback.CompleteAsync(messages, ct);
                 return ParseResponse(content, fallback);
             }
-            catch (Exception)
+            catch (Exception ex2)
             {
+                _log.LogError(ex2, "Fallback provider {provider} failed for {entity}, using rule-based", fallback.Name, entity.Key);
                 return await _ruleBased.SummarizeAsync(entity, relationships, repositoryId, ct);
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _log.LogError(ex, "Provider {provider} failed for {entity}, using rule-based", primary.Name, entity.Key);
             return await _ruleBased.SummarizeAsync(entity, relationships, repositoryId, ct);
         }
     }
@@ -172,4 +183,28 @@ public sealed class AiSummarizer : ISemanticSummarizer
     }
 
     private static long EstimateTokens(string text) => (text.Length + 3) / 4;
+
+    private async Task ThrottleAsync(CancellationToken ct)
+    {
+        var rpm = _options.RequestsPerMinute;
+        if (rpm <= 0)
+        {
+            return;
+        }
+
+        var minIntervalMs = 60000.0 / rpm;
+        long delayMs;
+        lock (_throttleLock)
+        {
+            var now = Environment.TickCount64;
+            var next = Math.Max(_lastCallTicks + (long)minIntervalMs, now);
+            _lastCallTicks = next;
+            delayMs = next - now;
+        }
+
+        if (delayMs > 0)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(delayMs), ct);
+        }
+    }
 }
