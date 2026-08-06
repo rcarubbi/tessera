@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.Queries;
 
 namespace Tessera.Api;
@@ -11,9 +13,13 @@ public static class QueryEndpoints
             string entity,
             string? commit,
             int? maxDepth,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await queries.ImpactAsync(repositoryId, entity, commit, maxDepth ?? 10, ct));
@@ -28,9 +34,13 @@ public static class QueryEndpoints
             Guid repositoryId,
             string entity,
             string? commit,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await queries.ConsumersAsync(repositoryId, entity, commit, ct));
@@ -46,9 +56,13 @@ public static class QueryEndpoints
             string entity,
             string? commit,
             int? maxDepth,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await queries.ChainAsync(repositoryId, entity, commit, maxDepth ?? 10, ct));
@@ -63,9 +77,13 @@ public static class QueryEndpoints
             Guid repositoryId,
             string from,
             string to,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await queries.DiffAsync(repositoryId, from, to, ct));
@@ -82,9 +100,13 @@ public static class QueryEndpoints
             string? module,
             int? maxDepth,
             string? commit,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await queries.GraphAsync(repositoryId, entity, module, maxDepth, commit, ct));
@@ -101,9 +123,13 @@ public static class QueryEndpoints
             string? module,
             int? maxDepth,
             string? commit,
+            HttpContext context,
+            TesseraDbContext db,
             GraphQueryService queries,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 var mermaid = await queries.MermaidAsync(repositoryId, entity, module, maxDepth, commit, ct);

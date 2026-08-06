@@ -66,7 +66,7 @@
 
 ## 8. web-dashboard
 
-- [ ] 8.1 Autenticação e scoping de acesso por usuário/repo — parcial: auth por API key compartilhada, sem scoping por usuário
+- [x] 8.1 Autenticação e scoping de acesso por usuário/repo — OAuth GitHub (login/callback/logout/me), sessões, `AccessContext` (admin via `Dashboard__ApiKey` ou `Auth__Admins`; não-admin via installations do usuário), scoping por `RepositoryAccess`/`GuardRepoAsync` (401/403/404) em listagem, snapshots, queries, chat e review; web: botão "Sign in with GitHub", `?token=` pós-redirect, usuário no TopBar; migration `AddAuthSessionsAndUsers`; testes (9) — falta gerar credenciais OAuth reais (com `1.3`)
 - [x] 8.2 Tela de repos conectados: status, último snapshot, node count
 - [x] 8.3 Grafo interativo (foco em entidade, expandir vizinhos, filtros por módulo/tipo de edge, seletor de snapshot)
 - [x] 8.4 Tela de diff entre dois commits

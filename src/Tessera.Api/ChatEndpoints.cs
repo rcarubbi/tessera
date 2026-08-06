@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Tessera.Infrastructure.Chat;
+using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.Queries;
 
 namespace Tessera.Api;
@@ -11,9 +13,13 @@ public static class ChatEndpoints
         app.MapPost("/api/repositories/{repositoryId:guid}/chat", async (
             Guid repositoryId,
             ChatRequest request,
+            HttpContext context,
+            TesseraDbContext db,
             IArchitectureChatService chat,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             if (string.IsNullOrWhiteSpace(request.Question))
             {
                 return Results.BadRequest(new { error = "question is required" });
@@ -38,10 +44,14 @@ public static class ChatEndpoints
         app.MapPost("/api/repositories/{repositoryId:guid}/chat/stream", async (
             Guid repositoryId,
             ChatRequest request,
+            HttpContext context,
+            TesseraDbContext db,
             IArchitectureChatService chat,
             HttpResponse response,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             if (string.IsNullOrWhiteSpace(request.Question))
             {
                 return Results.BadRequest(new { error = "question is required" });

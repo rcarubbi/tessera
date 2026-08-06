@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Tessera.Api;
 using Tessera.Infrastructure;
 using Tessera.Infrastructure.Ai;
+using Tessera.Infrastructure.Auth;
 using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.GitHub;
@@ -13,12 +15,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddTesseraInfrastructure(builder.Configuration);
 builder.Services.AddHttpClient();
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection("GitHub"));
+builder.Services.Configure<GitHubOAuthOptions>(builder.Configuration.GetSection("GitHubOAuth"));
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>();
+builder.Services.AddSingleton<IGitHubOAuthClient>(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<GitHubOAuthOptions>>().Value;
+    return new GitHubOAuthClient(sp.GetRequiredService<IHttpClientFactory>(), options);
+});
 builder.Services.AddSingleton<TokenBudgetTracker>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IProviderRegistry>(sp => sp.GetRequiredService<ProviderRegistry>());
 builder.Services.AddScoped<GraphQueryService>();
+builder.Services.AddScoped<AccessControlService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IArchitectureChatService, ArchitectureChatService>();
 builder.Services.AddScoped<ReviewService>();
@@ -48,17 +58,25 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("web");
 
-var dashboardApiKey = builder.Configuration["Dashboard:ApiKey"];
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? "";
-    if (!string.IsNullOrEmpty(dashboardApiKey)
-        && path.StartsWith("/api/", StringComparison.Ordinal)
-        && !path.StartsWith("/api/github/", StringComparison.OrdinalIgnoreCase))
+    if (path.StartsWith("/api/", StringComparison.Ordinal)
+        && !path.StartsWith("/api/github/", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/api/auth/", StringComparison.OrdinalIgnoreCase))
     {
-        var header = context.Request.Headers.Authorization.ToString();
-        var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..] : null;
-        if (!string.Equals(token, dashboardApiKey, StringComparison.Ordinal))
+        var configuration = context.RequestServices.GetRequiredService<IConfiguration>();
+        var accessService = context.RequestServices.GetRequiredService<AccessControlService>();
+        var access = await accessService.AuthenticateAsync(
+            context.Request.Headers.Authorization.ToString(),
+            configuration["Dashboard:ApiKey"] ?? "",
+            context.RequestAborted);
+
+        if (access is not null)
+        {
+            context.Items[AccessControlExtensions.ItemsKey] = access;
+        }
+        else if (AuthRequired(context.RequestServices))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new { error = "Unauthorized." });
@@ -68,22 +86,46 @@ app.Use(async (context, next) =>
     await next();
 });
 
+static bool AuthRequired(IServiceProvider services)
+{
+    var configuration = services.GetRequiredService<IConfiguration>();
+    if (!string.IsNullOrEmpty(configuration["Dashboard:ApiKey"]))
+    {
+        return true;
+    }
+    var oauth = services.GetRequiredService<IOptions<GitHubOAuthOptions>>().Value;
+    return !string.IsNullOrEmpty(oauth.ClientId) && !string.IsNullOrEmpty(oauth.ClientSecret);
+}
+
 app.MapGet("/health", async (TesseraDbContext db) =>
 {
     var canConnect = await db.Database.CanConnectAsync();
     return Results.Ok(new { status = canConnect ? "ok" : "degraded" });
 });
 
-app.MapGet("/api/repositories", async (TesseraDbContext db) =>
-    Results.Ok(await db.Repositories.AsNoTracking().OrderByDescending(r => r.UpdatedAt).ToListAsync()));
+app.MapGet("/api/repositories", async (HttpContext context, TesseraDbContext db) =>
+{
+    var access = context.GetAccess();
+    var query = db.Repositories.AsNoTracking();
+    if (access is not null && !access.IsAdmin)
+    {
+        query = query.Where(r => access.InstallationIds.Contains(r.InstallationId));
+    }
+    return Results.Ok(await query.OrderByDescending(r => r.UpdatedAt).ToListAsync());
+});
 
-app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, TesseraDbContext db) =>
-    Results.Ok(await db.Snapshots.AsNoTracking()
+app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, HttpContext context, TesseraDbContext db) =>
+{
+    var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
+    if (guarded is not null) return guarded;
+    return Results.Ok(await db.Snapshots.AsNoTracking()
         .Where(s => s.RepositoryId == id)
         .OrderByDescending(s => s.CreatedAt)
-        .ToListAsync()));
+        .ToListAsync());
+});
 
 app.MapGitHubEndpoints();
+app.MapAuthEndpoints();
 app.MapQueryEndpoints();
 app.MapChatEndpoints();
 app.MapReviewEndpoints();

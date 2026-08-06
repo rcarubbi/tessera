@@ -16,6 +16,8 @@ public class TesseraDbContext : DbContext
     public DbSet<KnowledgeNodeProvenance> KnowledgeNodeProvenances => Set<KnowledgeNodeProvenance>();
     public DbSet<GraphEdge> GraphEdges => Set<GraphEdge>();
     public DbSet<NodeEmbedding> NodeEmbeddings => Set<NodeEmbedding>();
+    public DbSet<GitHubUser> GitHubUsers => Set<GitHubUser>();
+    public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +33,23 @@ public class TesseraDbContext : DbContext
         {
             e.HasKey(i => i.Id);
             e.HasIndex(i => i.AccountId).IsUnique();
+        });
+
+        modelBuilder.Entity<GitHubUser>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.HasIndex(u => u.Login).IsUnique();
+        });
+
+        modelBuilder.Entity<AuthSession>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.Token).IsUnique();
+            e.HasIndex(s => s.GitHubUserId);
+            e.HasOne<GitHubUser>()
+                .WithMany()
+                .HasForeignKey(s => s.GitHubUserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Snapshot>(e =>

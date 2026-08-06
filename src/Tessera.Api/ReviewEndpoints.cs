@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.Queries;
 using Tessera.Infrastructure.Reviews;
 
@@ -10,9 +12,13 @@ public static class ReviewEndpoints
         app.MapGet("/api/repositories/{repositoryId:guid}/review", async (
             Guid repositoryId,
             string? commit,
+            HttpContext context,
+            TesseraDbContext db,
             ReviewService reviews,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             try
             {
                 return Results.Ok(await reviews.ListAsync(repositoryId, commit, ct));
@@ -26,9 +32,13 @@ public static class ReviewEndpoints
         app.MapPost("/api/repositories/{repositoryId:guid}/review/{nodeId:guid}/accept", async (
             Guid repositoryId,
             Guid nodeId,
+            HttpContext context,
+            TesseraDbContext db,
             ReviewService reviews,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             var item = await reviews.AcceptAsync(repositoryId, nodeId, ct);
             return item is null ? Results.NotFound(new { error = "Node not found." }) : Results.Ok(item);
         });
@@ -36,9 +46,13 @@ public static class ReviewEndpoints
         app.MapPost("/api/repositories/{repositoryId:guid}/review/{nodeId:guid}/dismiss", async (
             Guid repositoryId,
             Guid nodeId,
+            HttpContext context,
+            TesseraDbContext db,
             ReviewService reviews,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             var item = await reviews.DismissAsync(repositoryId, nodeId, ct);
             return item is null ? Results.NotFound(new { error = "Node not found." }) : Results.Ok(item);
         });
@@ -47,9 +61,13 @@ public static class ReviewEndpoints
             Guid repositoryId,
             Guid nodeId,
             ReviewEditRequest request,
+            HttpContext context,
+            TesseraDbContext db,
             ReviewService reviews,
             CancellationToken ct) =>
         {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
             if (string.IsNullOrWhiteSpace(request.Content))
             {
                 return Results.BadRequest(new { error = "content is required" });

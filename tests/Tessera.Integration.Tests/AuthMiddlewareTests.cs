@@ -63,4 +63,17 @@ public sealed class AuthMiddlewareTests : IClassFixture<WebApplicationFactory<Pr
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Auth_config_is_public_and_reports_oauth_disabled()
+    {
+        using var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/api/auth/config");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(
+            await response.Content.ReadAsStringAsync());
+        Assert.False(payload!["githubEnabled"]);
+    }
 }

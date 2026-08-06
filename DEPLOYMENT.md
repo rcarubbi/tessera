@@ -34,9 +34,25 @@ expands `${VAR}` references).
 
 | Variable | Description |
 |---|---|
-| `Dashboard__ApiKey` | Bearer key required by `/api/*` (except `/api/github/*`). **Generate a strong value for production.** |
+| `Dashboard__ApiKey` | Bearer key required by `/api/*` (except `/api/github/*`). Admin access for dev; **generate a strong value for production.** |
 | `AllowedHosts` | Host header allow-list. Keep `*` only for local/dev. |
 | `Cors__AllowedOrigins` | Restrict the dashboard origin if your browser hits CORS errors after locking down `AllowedHosts`. |
+
+### User auth (GitHub OAuth + access scoping)
+
+When `GitHubOAuth__ClientId`/`ClientSecret` are set, users can sign in with
+GitHub. Each user's session is scoped to the GitHub App installations they can
+access; admins (listed in `Auth__Admins`) see every repository.
+
+| Variable | Description |
+|---|---|
+| `GitHubOAuth__ClientId` | GitHub OAuth App client ID. Empty disables the "Sign in with GitHub" flow (API key only). |
+| `GitHubOAuth__ClientSecret` | GitHub OAuth App client secret. **Never commit it.** |
+| `GitHubOAuth__CallbackUrl` | Must match the OAuth App redirect URI, e.g. `http://localhost:5080/api/auth/callback`. |
+| `GitHubOAuth__WebUrl` | Web origin for post-login redirect, e.g. `http://localhost:3000`. |
+| `Auth__Admins` | Comma-separated GitHub logins granted access to all repositories. |
+| `Auth__SessionLifetimeHours` | Session validity in hours (default `12`). |
+
 
 ### GitHub App (ingestion)
 

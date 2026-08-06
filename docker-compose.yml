@@ -43,6 +43,14 @@ services:
       # GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
       # GitHub__WebhookSecret: ""
       # GitHub__AppUrl: "http://localhost:3000"
+      # GitHub OAuth config (user sign-in; WebUrl must match web origin):
+      # GitHubOAuth__ClientId: ""
+      # GitHubOAuth__ClientSecret: ""
+      # GitHubOAuth__CallbackUrl: "http://localhost:5080/api/auth/callback"
+      # GitHubOAuth__WebUrl: "http://localhost:3000"
+      # Admin logins (comma-separated) get access to every repository:
+      # Auth__Admins: ""
+      # Auth__SessionLifetimeHours: "12"
     ports:
       - "5080:8080"
     volumes:
