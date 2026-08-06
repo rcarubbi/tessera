@@ -1,0 +1,18 @@
+{
+  "name": "tessera-analyzers",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.20.8"
+  }
+}

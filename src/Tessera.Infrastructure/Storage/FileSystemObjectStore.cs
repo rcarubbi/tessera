@@ -1,0 +1,50 @@
+using System.Text;
+using Tessera.Domain.Ports;
+
+namespace Tessera.Infrastructure.Storage;
+
+public sealed class FileSystemObjectStore : IObjectStore
+{
+    private readonly string _root;
+
+    public FileSystemObjectStore(string rootPath)
+    {
+        _root = rootPath;
+        Directory.CreateDirectory(_root);
+    }
+
+    public Task<string> PutAsync(string key, string content, CancellationToken ct = default)
+    {
+        var path = GetPath(key);
+        ct.ThrowIfCancellationRequested();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (!File.Exists(path))
+        {
+            File.WriteAllText(path, content, Encoding.UTF8);
+        }
+        return Task.FromResult(key);
+    }
+
+    public Task<string?> GetAsync(string key, CancellationToken ct = default)
+    {
+        var path = GetPath(key);
+        ct.ThrowIfCancellationRequested();
+        if (!File.Exists(path))
+        {
+            return Task.FromResult<string?>(null);
+        }
+        return Task.FromResult<string?>(File.ReadAllText(path, Encoding.UTF8));
+    }
+
+    public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(File.Exists(GetPath(key)));
+    }
+
+    private string GetPath(string key)
+    {
+        var safeKey = key.Replace('\\', '/').Trim('/');
+        return Path.Combine(_root, safeKey);
+    }
+}

@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tessera
+      POSTGRES_USER: tessera
+      POSTGRES_PASSWORD: tessera
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tessera"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  analyzers:
+    build:
+      context: ./analyzers
+    ports:
+      - "4350:4350"
+    environment:
+      PORT: 4350
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cpus: 1.0
+    mem_limit: 512m
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Tessera.Api/Dockerfile
+    environment:
+      ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
+      # Dashboard access key (required by the web dashboard):
+      Dashboard__ApiKey: "dev-dashboard-key"
+      # GitHub App config (required for real ingestion):
+      # GitHub__AppId: ""
+      # GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
+      # GitHub__WebhookSecret: ""
+      # GitHub__AppUrl: "http://localhost:3000"
+    ports:
+      - "5080:8080"
+    volumes:
+      - objectsdata:/app/objects
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cpus: 1.0
+    mem_limit: 1g
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/Tessera.Worker/Dockerfile
+    environment:
+      ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
+      Sidecar__BaseUrl: "http://analyzers:4350"
+      Worker__WorkRoot: "/app/work"
+      ObjectStore__Root: "/app/objects"
+      # LLM providers (leave empty for structural-only / rule-based mode):
+      # Ai__Providers__0__ApiKey: ""
+      # Ai__Providers__1__ApiKey: ""
+      # Ai__Primary: "deepseek"
+      # Ai__Fallback: "qwen"
+    volumes:
+      - workdata:/app/work
+      - objectsdata:/app/objects
+      - ./e2e/origin:/repos/e2e-origin:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      analyzers:
+        condition: service_started
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 256
+
+  web:
+    build:
+      context: ./web
+    environment:
+      NEXT_PUBLIC_API_BASE: "http://localhost:5080"
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: 512m
+
+volumes:
+  pgdata:
+  workdata:
+  objectsdata:

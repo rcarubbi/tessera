@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Node
+node_modules/
+dist/
+.next/
+out/
+
+# Tessera runtime
+work/
+objects/
+
+# Nested fixtures (own git repos)
+e2e/origin/
+
+# Local agent tooling
+.opencode/
+
+# Env / secrets
+.env
+*.pem
+appsettings.Local.json
+
+# IDE
+.vs/
+.idea/
+*.suo
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# OpenSpec
+openspec/changes/archive/
