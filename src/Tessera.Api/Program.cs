@@ -18,7 +18,8 @@ builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection("GitH
 builder.Services.Configure<GitHubOAuthOptions>(builder.Configuration.GetSection("GitHubOAuth"));
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
-builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>();
+builder.Services.AddSingleton<IGitHubAppClient>(sp =>
+    new GitHubAppClient(sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IOptions<GitHubOptions>>()));
 builder.Services.AddSingleton<IGitHubOAuthClient>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<GitHubOAuthOptions>>().Value;

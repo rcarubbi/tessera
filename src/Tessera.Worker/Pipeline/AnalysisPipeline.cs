@@ -9,6 +9,7 @@ using Tessera.Domain.Ports;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Data;
+using Tessera.Infrastructure.GitHub;
 
 namespace Tessera.Worker.Pipeline;
 
@@ -24,8 +25,10 @@ public sealed class AnalysisPipeline(
     IParserSidecarClient parser,
     ISemanticSummarizer summarizer,
     IObjectStore store,
+    IGitHubAppClient github,
     IOptions<AnalysisPipelineOptions> options,
-    IOptions<AiOptions> aiOptions)
+    IOptions<AiOptions> aiOptions,
+    IOptions<GitHubOptions> githubOptions)
 {
     private readonly string _workRoot = Path.Combine(options.Value.WorkRoot, "repos");
     private readonly AiOptions _aiOptions = aiOptions.Value;
@@ -39,7 +42,7 @@ public sealed class AnalysisPipeline(
 
         try
         {
-            var defaultBranch = await git.EnsureCloneAsync(repo.CloneUrl!, workDir, ct);
+            var defaultBranch = await git.EnsureCloneAsync(await ResolveCloneUrlAsync(repo, ct), workDir, ct);
             var head = await git.ResolveHeadAsync(workDir, defaultBranch, ct);
 
             if (string.Equals(head, repo.LastProcessedCommit, StringComparison.OrdinalIgnoreCase))
@@ -100,6 +103,24 @@ public sealed class AnalysisPipeline(
             await db.SaveChangesAsync(ct);
             throw new AnalysisPipelineException($"Analysis of {repo.FullName} failed: {ex.Message}", ex);
         }
+    }
+
+    private async Task<string> ResolveCloneUrlAsync(Repository repo, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(repo.CloneUrl))
+        {
+            return repo.CloneUrl ?? "";
+        }
+        if (!repo.CloneUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)
+            || repo.InstallationId <= 0
+            || string.IsNullOrEmpty(githubOptions.Value.AppId))
+        {
+            return repo.CloneUrl;
+        }
+
+        var token = await github.CreateInstallationAccessTokenAsync(repo.InstallationId, ct);
+        var uri = new Uri(repo.CloneUrl);
+        return $"https://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
     }
 
     private async Task<ParseResult> ParseRepositoryAsync(string workDir, Repository repo, string head, CancellationToken ct)

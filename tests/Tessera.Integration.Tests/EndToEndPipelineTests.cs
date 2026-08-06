@@ -10,6 +10,7 @@ using Tessera.Domain.Enums;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Data;
+using Tessera.Infrastructure.GitHub;
 using Tessera.Infrastructure.Queries;
 using Tessera.Infrastructure.Storage;
 using Tessera.Worker.Pipeline;
@@ -164,8 +165,10 @@ public sealed class EndToEndPipelineTests : IDisposable
             })),
             new RuleBasedSummarizer(),
             new FileSystemObjectStore(_objectRoot),
+            new NoopGitHubAppClient(),
             Options.Create(new AnalysisPipelineOptions { WorkRoot = _workRoot }),
-            Options.Create(new AiOptions { ReviewThreshold = 0.7 }));
+            Options.Create(new AiOptions { ReviewThreshold = 0.7 }),
+            Options.Create(new GitHubOptions()));
     }
 
     private TesseraDbContext CreateDb()
@@ -363,5 +366,14 @@ public sealed class EndToEndPipelineTests : IDisposable
             PooledConnectionLifetime = TimeSpan.FromMinutes(5)
         });
         public HttpClient CreateClient(string name) => _client;
+    }
+
+    private sealed class NoopGitHubAppClient : IGitHubAppClient
+    {
+        public Task<string> CreateInstallationAccessTokenAsync(long installationId, CancellationToken ct = default)
+            => Task.FromResult("test-token");
+
+        public Task<IReadOnlyList<GitHubRepoInfo>> ListInstallationRepositoriesAsync(long installationId, string token, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<GitHubRepoInfo>>(Array.Empty<GitHubRepoInfo>());
     }
 }

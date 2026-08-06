@@ -22,13 +22,14 @@ services:
       - "4350:4350"
     environment:
       PORT: 4350
+      NODE_OPTIONS: "--max-old-space-size=768"
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
     cpus: 1.0
-    mem_limit: 512m
+    mem_limit: 1.5g
 
   api:
     build:
@@ -38,23 +39,22 @@ services:
       ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
       # Dashboard access key (required by the web dashboard):
       Dashboard__ApiKey: "dev-dashboard-key"
-      # GitHub App config (required for real ingestion):
-      # GitHub__AppId: ""
-      # GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
-      # GitHub__WebhookSecret: ""
-      # GitHub__AppUrl: "http://localhost:3000"
-      # GitHub OAuth config (user sign-in; WebUrl must match web origin):
-      # GitHubOAuth__ClientId: ""
-      # GitHubOAuth__ClientSecret: ""
-      # GitHubOAuth__CallbackUrl: "http://localhost:5080/api/auth/callback"
-      # GitHubOAuth__WebUrl: "http://localhost:3000"
-      # Admin logins (comma-separated) get access to every repository:
-      # Auth__Admins: ""
+      # GitHub App config (ingestion + OAuth login). Fill .env (see README/DEPLOYMENT.md):
+      GitHub__AppId: "${GITHUB_APP_ID:-}"
+      GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
+      GitHub__WebhookSecret: "${GITHUB_WEBHOOK_SECRET:-}"
+      GitHub__AppUrl: "http://localhost:3000"
+      GitHubOAuth__ClientId: "${GITHUB_OAUTH_CLIENT_ID:-}"
+      GitHubOAuth__ClientSecret: "${GITHUB_OAUTH_CLIENT_SECRET:-}"
+      GitHubOAuth__CallbackUrl: "http://localhost:5080/api/auth/callback"
+      GitHubOAuth__WebUrl: "http://localhost:3000"
+      Auth__Admins: "${AUTH_ADMINS:-}"
       # Auth__SessionLifetimeHours: "12"
     ports:
       - "5080:8080"
     volumes:
       - objectsdata:/app/objects
+      - ./secrets/tessera-app.pem:/app/secrets/tessera-app.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,7 +74,11 @@ services:
       ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
       Sidecar__BaseUrl: "http://analyzers:4350"
       Worker__WorkRoot: "/app/work"
+      Worker__MaxFilesPerBatch: "200"
       ObjectStore__Root: "/app/objects"
+      # GitHub App config (used to clone private repositories with an installation token):
+      GitHub__AppId: "${GITHUB_APP_ID:-}"
+      GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
       # LLM providers (leave empty for structural-only / rule-based mode):
       # Ai__Providers__0__ApiKey: ""
       # Ai__Providers__1__ApiKey: ""
@@ -83,6 +87,7 @@ services:
     volumes:
       - workdata:/app/work
       - objectsdata:/app/objects
+      - ./secrets/tessera-app.pem:/app/secrets/tessera-app.pem:ro
       - ./e2e/origin:/repos/e2e-origin:ro
     depends_on:
       postgres:
