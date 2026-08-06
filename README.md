@@ -79,7 +79,7 @@ Deploy e configuração (envs, providers LLM, GitHub App, hardening):
 - [x] Providers LLM: OpenAI-compatible (DeepSeek/Qwen/GLM), retry+backoff, fallback, tiering, budget diário
 - [x] Query layer ("o que quebra", diff arquitetural, ciclos, Mermaid) + testes
 - [x] Chat RAG (embeddings + fallback lexical, citações file:line, NoContext) + testes
-- [x] Web dashboard (Next.js): repos, grafo interativo, diff, review queue, chat streaming, auth por API key
+- [x] Web dashboard (Next.js): repos, grafo interativo, diff, review queue, chat streaming, auth por API key + login GitHub OAuth (scoping por usuário/instalação)
 - [x] Hardening e QA: CI (dotnet/analyzers/web/scan-secrets), E2E impacto+diff, compose com rootfs read-only + limites, docs de deploy, benchmark de custo LLM
 - [ ] GitHub App real (credenciais)
 

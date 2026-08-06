@@ -79,10 +79,15 @@ public static class AuthEndpoints
         IOptions<GitHubOAuthOptions> options,
         CancellationToken ct)
     {
+        var expectedState = context.Request.Cookies[StateCookieName];
         context.Response.Cookies.Delete(StateCookieName);
 
         var code = context.Request.Query["code"].ToString();
-        if (string.IsNullOrEmpty(code) || !IsConfigured(options.Value))
+        var state = context.Request.Query["state"].ToString();
+        if (string.IsNullOrEmpty(code)
+            || string.IsNullOrEmpty(expectedState)
+            || !string.Equals(state, expectedState, StringComparison.Ordinal)
+            || !IsConfigured(options.Value))
         {
             return RedirectToWeb(options.Value, "error=oauth_failed");
         }
@@ -126,7 +131,6 @@ public static class AuthEndpoints
     private static async Task<IResult> HandleMeAsync(
         HttpContext context,
         AccessControlService accessService,
-        IOptions<AuthOptions> authOptions,
         IConfiguration configuration,
         CancellationToken ct)
     {

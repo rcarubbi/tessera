@@ -76,4 +76,18 @@ public sealed class AuthMiddlewareTests : IClassFixture<WebApplicationFactory<Pr
             await response.Content.ReadAsStringAsync());
         Assert.False(payload!["githubEnabled"]);
     }
+
+    [Fact]
+    public async Task Auth_callback_without_state_cookie_is_rejected()
+    {
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/api/auth/callback?code=abc&state=random");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith("http://localhost:3000/repos?error=oauth_failed", response.Headers.Location!.ToString());
+    }
 }
