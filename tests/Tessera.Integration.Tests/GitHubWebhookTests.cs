@@ -138,6 +138,38 @@ public sealed class GitHubWebhookEndpointTests : IClassFixture<WebApplicationFac
         Assert.False(repo.IsConnected);
     }
 
+    [Fact]
+    public async Task Installation_created_registers_repositories()
+    {
+        var body = """
+            {
+              "action": "created",
+              "installation": { "id": 7, "account": { "login": "acme" } },
+              "repositories": [
+                {
+                  "id": 555,
+                  "name": "sample",
+                  "full_name": "acme/sample",
+                  "owner": { "login": "acme" },
+                  "clone_url": "https://github.com/acme/sample.git",
+                  "default_branch": "main"
+                }
+              ]
+            }
+            """;
+
+        var response = await PostWebhookAsync("installation", body);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+
+        using var db = CreateDb();
+        var repo = await db.Repositories.SingleAsync(r => r.GitHubId == 555);
+        Assert.Equal("acme", repo.Owner);
+        Assert.Equal("acme/sample", repo.FullName);
+        Assert.Equal(7, repo.InstallationId);
+        Assert.Equal(ProcessingStatus.Pending, repo.Status);
+        Assert.True(repo.IsConnected);
+    }
+
     private async Task<HttpResponseMessage> PostWebhookAsync(string eventName, string payload)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/github/webhook");

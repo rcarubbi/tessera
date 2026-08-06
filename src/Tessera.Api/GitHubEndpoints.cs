@@ -201,6 +201,14 @@ public static class GitHubEndpoints
             var installs = await db.GitHubInstallations.Where(i => i.Id == id).ToListAsync(ct);
             db.GitHubInstallations.RemoveRange(installs);
             await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (action == "created"
+            && root.TryGetProperty("repositories", out var repos)
+            && repos.ValueKind == JsonValueKind.Array)
+        {
+            await UpsertRepositoriesAsync(db, repos, id, "added", ct);
         }
     }
 
@@ -218,7 +226,12 @@ public static class GitHubEndpoints
             return;
         }
 
-        foreach (var repo in added.EnumerateArray())
+        await UpsertRepositoriesAsync(db, added, installationId, action, ct);
+    }
+
+    private static async Task UpsertRepositoriesAsync(TesseraDbContext db, JsonElement reposArray, long installationId, string action, CancellationToken ct)
+    {
+        foreach (var repo in reposArray.EnumerateArray())
         {
             if (!repo.TryGetProperty("id", out var rId) || !rId.TryGetInt64(out var gid))
             {
@@ -231,7 +244,7 @@ public static class GitHubEndpoints
                 db.Repositories.Add(new Repository
                 {
                     GitHubId = gid,
-                    Owner = TryGetString(repo, "owner", out var o) ? o : "",
+                    Owner = GetRepoOwner(repo),
                     Name = TryGetString(repo, "name", out var n) ? n : "",
                     FullName = TryGetString(repo, "full_name", out var f) ? f : "",
                     CloneUrl = TryGetString(repo, "clone_url", out var c) ? c : null,
@@ -258,6 +271,22 @@ public static class GitHubEndpoints
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    private static string GetRepoOwner(JsonElement repo)
+    {
+        if (repo.TryGetProperty("owner", out var owner))
+        {
+            if (owner.ValueKind == JsonValueKind.String)
+            {
+                return owner.GetString() ?? "";
+            }
+            if (owner.ValueKind == JsonValueKind.Object && TryGetString(owner, "login", out var login))
+            {
+                return login;
+            }
+        }
+        return "";
     }
 
     private static async Task MarkReposDisconnectedAsync(TesseraDbContext db, long installationId, CancellationToken ct)
