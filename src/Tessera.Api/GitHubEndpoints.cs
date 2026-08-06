@@ -247,7 +247,7 @@ public static class GitHubEndpoints
                     Owner = GetRepoOwner(repo),
                     Name = TryGetString(repo, "name", out var n) ? n : "",
                     FullName = TryGetString(repo, "full_name", out var f) ? f : "",
-                    CloneUrl = TryGetString(repo, "clone_url", out var c) ? c : null,
+                    CloneUrl = GetCloneUrl(repo),
                     DefaultBranch = TryGetString(repo, "default_branch", out var b) ? b : "main",
                     InstallationId = installationId,
                     IsConnected = true,
@@ -267,10 +267,27 @@ public static class GitHubEndpoints
                 existing.InstallationId = installationId;
                 existing.Status = ProcessingStatus.Pending;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
+                if (string.IsNullOrEmpty(existing.CloneUrl))
+                {
+                    existing.CloneUrl = GetCloneUrl(repo);
+                }
             }
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    private static string? GetCloneUrl(JsonElement repo)
+    {
+        if (TryGetString(repo, "clone_url", out var cloneUrl) && cloneUrl.Length > 0)
+        {
+            return cloneUrl;
+        }
+        if (TryGetString(repo, "full_name", out var fullName) && fullName.Length > 0)
+        {
+            return $"https://github.com/{fullName}.git";
+        }
+        return null;
     }
 
     private static string GetRepoOwner(JsonElement repo)

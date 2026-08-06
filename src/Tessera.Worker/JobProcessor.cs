@@ -6,8 +6,7 @@ using Tessera.Worker.Pipeline;
 namespace Tessera.Worker;
 
 public sealed class JobProcessor(
-    TesseraDbContext db,
-    AnalysisPipeline pipeline,
+    IServiceScopeFactory scopeFactory,
     ILogger<JobProcessor> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,6 +32,9 @@ public sealed class JobProcessor(
 
     private async Task ProcessPendingAsync(CancellationToken ct)
     {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
+
         var repo = await db.Repositories
             .Where(r => r.IsConnected && r.Status == ProcessingStatus.Pending)
             .OrderBy(r => r.CreatedAt)
@@ -44,6 +46,8 @@ public sealed class JobProcessor(
         }
 
         logger.LogInformation("Processing repository {repo} ({status})", repo.FullName, repo.Status);
+
+        var pipeline = scope.ServiceProvider.GetRequiredService<AnalysisPipeline>();
         await pipeline.ProcessAsync(repo, ct);
     }
 }

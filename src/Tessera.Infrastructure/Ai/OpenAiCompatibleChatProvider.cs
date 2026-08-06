@@ -113,11 +113,15 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
 
         using var body = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(body);
-        while (!reader.EndOfStream)
+        while (true)
         {
             ct.ThrowIfCancellationRequested();
             var line = await reader.ReadLineAsync(ct);
-            if (line is null || !line.StartsWith("data:", StringComparison.Ordinal))
+            if (line is null)
+            {
+                break;
+            }
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
                 continue;
             }

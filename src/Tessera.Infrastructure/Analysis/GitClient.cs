@@ -4,7 +4,7 @@ namespace Tessera.Infrastructure.Analysis;
 
 public interface IGitClient
 {
-    Task EnsureCloneAsync(string cloneUrl, string workDir, string defaultBranch, CancellationToken ct = default);
+    Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default);
     Task<string> ResolveHeadAsync(string workDir, string branch, CancellationToken ct = default);
     Task<IReadOnlyList<string>> ListFilesAtCommitAsync(string workDir, string commitSha, CancellationToken ct = default);
     Task<string?> ReadFileAtCommitAsync(string workDir, string commitSha, string path, CancellationToken ct = default);
@@ -13,16 +13,32 @@ public interface IGitClient
 
 public sealed class GitClient : IGitClient
 {
-    public async Task EnsureCloneAsync(string cloneUrl, string workDir, string defaultBranch, CancellationToken ct = default)
+    public async Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default)
     {
         if (Directory.Exists(Path.Combine(workDir, ".git")))
         {
             await RunAsync(workDir, new[] { "fetch", "--all", "--prune" }, ct);
-            return;
+        }
+        else
+        {
+            Directory.CreateDirectory(workDir);
+            await RunAsync(workDir, new[] { "clone", "--no-checkout", cloneUrl, "." }, ct);
         }
 
-        Directory.CreateDirectory(workDir);
-        await RunAsync(workDir, new[] { "clone", "--no-checkout", "--branch", defaultBranch, cloneUrl, "." }, ct);
+        return await ResolveDefaultBranchAsync(workDir, ct);
+    }
+
+    private static async Task<string> ResolveDefaultBranchAsync(string workDir, CancellationToken ct)
+    {
+        try
+        {
+            var symbolicRef = await RunAsync(workDir, new[] { "symbolic-ref", "refs/remotes/origin/HEAD" }, ct);
+            return symbolicRef.Trim().Replace("refs/remotes/origin/", "", StringComparison.Ordinal);
+        }
+        catch (GitCommandException)
+        {
+            return "main";
+        }
     }
 
     public async Task<string> ResolveHeadAsync(string workDir, string branch, CancellationToken ct = default)

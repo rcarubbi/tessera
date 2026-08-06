@@ -39,8 +39,8 @@ public sealed class AnalysisPipeline(
 
         try
         {
-            await git.EnsureCloneAsync(repo.CloneUrl!, workDir, repo.DefaultBranch, ct);
-            var head = await git.ResolveHeadAsync(workDir, repo.DefaultBranch, ct);
+            var defaultBranch = await git.EnsureCloneAsync(repo.CloneUrl!, workDir, ct);
+            var head = await git.ResolveHeadAsync(workDir, defaultBranch, ct);
 
             if (string.Equals(head, repo.LastProcessedCommit, StringComparison.OrdinalIgnoreCase))
             {

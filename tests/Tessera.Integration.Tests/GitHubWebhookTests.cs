@@ -170,6 +170,32 @@ public sealed class GitHubWebhookEndpointTests : IClassFixture<WebApplicationFac
         Assert.True(repo.IsConnected);
     }
 
+    [Fact]
+    public async Task Installation_created_without_clone_url_falls_back_to_github_url()
+    {
+        var body = """
+            {
+              "action": "created",
+              "installation": { "id": 7, "account": { "login": "acme" } },
+              "repositories": [
+                {
+                  "id": 556,
+                  "name": "sample",
+                  "full_name": "acme/sample",
+                  "owner": { "login": "acme" }
+                }
+              ]
+            }
+            """;
+
+        var response = await PostWebhookAsync("installation", body);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+
+        using var db = CreateDb();
+        var repo = await db.Repositories.SingleAsync(r => r.GitHubId == 556);
+        Assert.Equal("https://github.com/acme/sample.git", repo.CloneUrl);
+    }
+
     private async Task<HttpResponseMessage> PostWebhookAsync(string eventName, string payload)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/github/webhook");
