@@ -7,7 +7,7 @@ namespace Tessera.Infrastructure.Ai;
 
 public sealed class RuleBasedSummarizer : ISemanticSummarizer
 {
-    public const string PromptVersionConst = "0.0.0";
+    public const string PromptVersionConst = "0.1.0";
 
     public string PromptVersion => PromptVersionConst;
 
@@ -60,6 +60,8 @@ public sealed class RuleBasedSummarizer : ISemanticSummarizer
                 sb.AppendLine($"- {consumer}");
             }
         }
+
+        RuleBasedArchitect.AppendSection(sb, entity);
 
         sb.AppendLine();
         sb.AppendLine("## Confidence");

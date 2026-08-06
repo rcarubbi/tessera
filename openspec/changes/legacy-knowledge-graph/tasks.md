@@ -32,7 +32,7 @@
 - [x] 4.4 Implementar orçamento de tokens por repo/dia com pausa automática
 - [x] 4.5 Criar agente Summarizer: markdown knowledge node (type, responsibilities, dependencies, incoming/outgoing, events, confidence)
 - [x] 4.6 Criar agente Relationship: edges que AST não pega (eventos implícitos, DI runtime) — via heurística no sidecar: `kind` real (interface/struct/enum/record), `fieldTypes`/`injectedTypes` (ctor params) → edges `Implements`, `FieldDependency` (conf 0.7/0.9) e `Injected` (conf 0.85/0.95), cross-file com confidence < 1; validado no e2e e ao vivo
-- [ ] 4.7 Criar agente Architect: bounded context e papel do componente
+- [x] 4.7 Criar agente Architect: bounded context e papel do componente — `RuleBasedArchitect` (regras, sem LLM): contexto = primeiro segmento de pasta significativo (skip src/app/services/...), papel = suffixo/kind (Controller, Service, Repository, Contract, DTO, EventPublisher, ...); seção `## Architecture` no knowledge node; também exigida no prompt LLM (PromptVersion 1.1.0); `RuleBasedSummarizer` bump 0.1.0 invalida stale
 - [x] 4.8 Gravar provenance (commit, modelo, promptVersion, timestamp) e flag de `stale` por promptVersion
 - [x] 4.9 Versionar prompts em `Ai/Prompts/` com versão semântica
 

@@ -76,6 +76,11 @@ public sealed class EndToEndPipelineTests : IDisposable
         Assert.NotEmpty(provenances);
         Assert.All(provenances, p => Assert.Equal(RuleBasedSummarizer.PromptVersionConst, p.PromptVersion));
 
+        var orderServiceNode = Assert.Single(nodes, n => n.Key == "OrderService.cs::OrderService");
+        Assert.Contains("## Architecture", orderServiceNode.Content);
+        Assert.Contains("- Bounded context: Root", orderServiceNode.Content);
+        Assert.Contains("- Role: Service", orderServiceNode.Content);
+
         var objectStorePath = Path.Combine(_objectRoot, "snapshots", $"{snapshot.RootHash}.json");
         Assert.True(File.Exists(objectStorePath), "snapshot JSON not persisted in object store");
         var stored = JsonSerializer.Deserialize<StoredSnapshot>(await File.ReadAllTextAsync(objectStorePath));

@@ -10,7 +10,7 @@ namespace Tessera.Infrastructure.Ai;
 
 public sealed class AiSummarizer : ISemanticSummarizer
 {
-    public const string PromptVersionConst = "1.0.0";
+    public const string PromptVersionConst = "1.1.0";
 
     private static readonly Regex ConfidenceRegex = new(
         @"(?im)^\s*confidence\s*[:=-]?\s*([0-9]+(?:\.[0-9]+)?)\s*$",
@@ -107,6 +107,10 @@ public sealed class AiSummarizer : ISemanticSummarizer
             (bullet list of consumers; add one line "None" if empty)
             ## Events
             (bullet list of events published/consumed; add one line "None" if none are evident)
+            ## Architecture
+            (two bullets: `- Bounded context: <name>` inferred from the codebase layout, and
+            `- Role: <role>` such as Controller, Service, Repository, Domain, Contract, DTO,
+            EventPublisher, or Configuration)
             ## Confidence
 
             End the node with a single line `Confidence: 0.xx` where xx is 0.00-1.00 based on how
