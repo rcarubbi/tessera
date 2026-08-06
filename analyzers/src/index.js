@@ -57,13 +57,36 @@ async function analyzeBatch(files) {
 
   for (const entity of entities) {
     for (const base of entity.bases || []) {
-      const already = inFileRelationships.some((r) => r.from === entity.key && r.type === 'Inherits');
+      const already = inFileRelationships.some(
+        (r) => r.from === entity.key && (r.type === 'Inherits' || r.type === 'Implements')
+      );
       if (already) continue;
       const candidates = (symbolIndex.get(base) || []).filter((k) => k !== entity.key);
       if (candidates.length === 1) {
-        emit(entity.key, candidates[0], 'Inherits', `${entity.path}`, 0.8);
+        const target = entities.find((e) => e.key === candidates[0]);
+        const type = target && target.kind === 'interface' ? 'Implements' : 'Inherits';
+        emit(entity.key, candidates[0], type, `${entity.path}`, 0.8);
       }
     }
+  }
+
+  const resolveTypes = (entity, field, type, confidence) => {
+    for (const dep of entity[field] || []) {
+      const already = inFileRelationships.some((r) => r.from === entity.key && r.type === type);
+      if (already) continue;
+      const candidates = (symbolIndex.get(dep) || []).filter((k) => k !== entity.key);
+      if (candidates.length === 1) {
+        emit(entity.key, candidates[0], type, `${entity.path}:${entity.startLine}`, confidence);
+      }
+    }
+  };
+
+  for (const entity of entities) {
+    resolveTypes(entity, 'fieldTypes', 'FieldDependency', 0.7);
+  }
+
+  for (const entity of entities) {
+    resolveTypes(entity, 'injectedTypes', 'Injected', 0.85);
   }
 
   const relationships = [...inFileRelationships, ...crossFileRelationships];

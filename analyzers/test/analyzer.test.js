@@ -102,3 +102,74 @@ test('analyzes TypeScript entities and imports', async () => {
   assert.ok(result.entities.some((e) => e.symbol === 'PaymentService.process'));
   assert.ok(result.imports.some((i) => i.includes('PaymentRepo')));
 });
+
+test('maps C# declaration kinds', async () => {
+  await Parser.init();
+  const source = `
+public interface IAuditable { DateTime? UpdatedAt { get; set; } }
+public enum PaymentStatus { Pending, Paid }
+public record PaymentDto(int Id);
+public struct Money { public decimal Amount; }
+public class Payment { public int Id { get; set; } }
+`;
+  const result = await analyzeFile({ path: 'Types.cs', content: source });
+  const kindOf = (symbol) => result.entities.find((e) => e.symbol === symbol).kind;
+  assert.equal(kindOf('IAuditable'), 'interface');
+  assert.equal(kindOf('PaymentStatus'), 'enum');
+  assert.equal(kindOf('PaymentDto'), 'record');
+  assert.equal(kindOf('Money'), 'struct');
+  assert.equal(kindOf('Payment'), 'class');
+});
+
+test('implements edge emitted for interface in same file', async () => {
+  await Parser.init();
+  const source = `
+public interface IAuditable { DateTime? UpdatedAt { get; set; } }
+public class Payment : IAuditable { public DateTime? UpdatedAt { get; set; } }
+`;
+  const result = await analyzeFile({ path: 'Payment.cs', content: source });
+  const edge = result.relationships.find((r) => r.type === 'Implements');
+  assert.ok(edge, 'Implements edge must exist');
+  assert.ok(edge.from.endsWith('Payment') && edge.to.endsWith('IAuditable'));
+  assert.equal(edge.confidence, 1);
+});
+
+test('inherits edge for class base, implements for interface', async () => {
+  await Parser.init();
+  const source = `
+public abstract class BaseController { }
+public interface IHealth { string Check(); }
+public class HealthController : BaseController, IHealth { public string Check() => "ok"; }
+`;
+  const result = await analyzeFile({ path: 'Api/HealthController.cs', content: source });
+  const types = result.relationships.map((r) => r.type).sort();
+  assert.ok(types.includes('Inherits'));
+  assert.ok(types.includes('Implements'));
+});
+
+test('injected and field dependency edges from constructor and property types', async () => {
+  await Parser.init();
+  const source = `
+public class PaymentRepo { }
+public class Payment { }
+public class OrderService
+{
+    private readonly PaymentRepo _repo;
+    public Payment Current { get; set; }
+    public OrderService(PaymentRepo repo, Payment current)
+    {
+        _repo = repo;
+        Current = current;
+    }
+}
+`;
+  const result = await analyzeFile({ path: 'Order/OrderService.cs', content: source });
+  const svc = result.entities.find((e) => e.symbol === 'OrderService');
+  assert.deepEqual(svc.fieldTypes, ['PaymentRepo', 'Payment']);
+  assert.deepEqual(svc.injectedTypes, ['PaymentRepo', 'Payment']);
+  const injected = result.relationships.find((r) => r.type === 'Injected');
+  const fieldDep = result.relationships.find((r) => r.type === 'FieldDependency');
+  assert.ok(injected && fieldDep, 'Injected and FieldDependency edges must exist');
+  assert.equal(injected.confidence, 0.95);
+  assert.equal(fieldDep.confidence, 0.9);
+});

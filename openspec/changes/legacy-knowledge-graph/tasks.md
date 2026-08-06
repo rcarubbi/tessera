@@ -31,7 +31,7 @@
 - [x] 4.3 Implementar tiering: modelo pequeno p/ entidades simples, maior p/ complexas (threshold por tamanho)
 - [x] 4.4 Implementar orçamento de tokens por repo/dia com pausa automática
 - [x] 4.5 Criar agente Summarizer: markdown knowledge node (type, responsibilities, dependencies, incoming/outgoing, events, confidence)
-- [ ] 4.6 Criar agente Relationship: edges que AST não pega (eventos implícitos, DI runtime)
+- [x] 4.6 Criar agente Relationship: edges que AST não pega (eventos implícitos, DI runtime) — via heurística no sidecar: `kind` real (interface/struct/enum/record), `fieldTypes`/`injectedTypes` (ctor params) → edges `Implements`, `FieldDependency` (conf 0.7/0.9) e `Injected` (conf 0.85/0.95), cross-file com confidence < 1; validado no e2e e ao vivo
 - [ ] 4.7 Criar agente Architect: bounded context e papel do componente
 - [x] 4.8 Gravar provenance (commit, modelo, promptVersion, timestamp) e flag de `stale` por promptVersion
 - [x] 4.9 Versionar prompts em `Ai/Prompts/` com versão semântica

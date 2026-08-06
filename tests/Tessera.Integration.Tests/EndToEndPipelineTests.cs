@@ -131,12 +131,21 @@ public sealed class EndToEndPipelineTests : IDisposable
         Assert.Equal("direct", orderDependent.Severity);
         Assert.Equal(1, orderDependent.Depth);
         Assert.Contains("Order.cs::Order", orderDependent.Trace);
+        var paymentDependent = Assert.Single(impact.Items, i => i.Key == "Payment.cs::Payment");
+        Assert.Equal("direct", paymentDependent.Severity);
+        Assert.Equal(1, paymentDependent.Depth);
 
         var diff = await queries.DiffAsync(repo.Id, firstCommit!, secondCommit);
         Assert.Contains(diff.Nodes, n => n.Change == "added" && n.Key == "Payment.cs::Payment");
         Assert.Contains(diff.Nodes, n => n.Change == "changed" && n.Key == "Order.cs::Order");
         Assert.Contains(diff.Nodes, n => n.Change == "changed" && n.Key == "OrderService.cs::OrderService");
         Assert.DoesNotContain(diff.Nodes, n => n.Key == "Program.cs::Program");
+        Assert.Contains(diff.Edges, e => e.Change == "added" && e.Type == "Implements"
+            && e.From == "Order.cs::Order" && e.To == "Auditable.cs::IAuditable");
+        Assert.Contains(diff.Edges, e => e.Change == "added" && e.Type == "FieldDependency"
+            && e.From == "Payment.cs::Payment" && e.To == "Order.cs::Order");
+        Assert.Contains(diff.Edges, e => e.Change == "added" && e.Type == "Injected"
+            && e.From == "Payment.cs::Payment" && e.To == "Order.cs::Order");
     }
 
     private AnalysisPipeline CreatePipeline(TesseraDbContext db)
@@ -282,7 +291,12 @@ public sealed class EndToEndPipelineTests : IDisposable
 
             public class Payment
             {
-                public Order Order { get; set; } = new();
+                public Payment(Order order)
+                {
+                    Order = order;
+                }
+
+                public Order Order { get; set; }
                 public bool Process() => Order.Total > 0;
             }
             """);

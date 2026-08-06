@@ -117,6 +117,61 @@ function isKind(node, kinds) {
   return kinds.includes(node.type);
 }
 
+const KIND_BY_NODE = {
+  interface_declaration: 'interface',
+  struct_declaration: 'struct',
+  enum_declaration: 'enum',
+  record_declaration: 'record',
+  type_alias_declaration: 'class',
+};
+
+function mapKind(nodeType) {
+  return KIND_BY_NODE[nodeType] || 'class';
+}
+
+function memberTypeNode(decl) {
+  const kids = decl.namedChildren.filter((c) => c.type !== 'modifier' && c.type !== 'comment');
+  const vd = kids.find((c) => c.type === 'variable_declaration');
+  if (vd) {
+    const typeNode = vd.namedChildren.find((c) => c.type !== 'variable_declarator');
+    if (typeNode) return typeNode;
+  }
+  const byField = decl.childForFieldName('type');
+  if (byField) return byField;
+  return kids[0] || null;
+}
+
+function extractFieldTypes(node) {
+  const types = [];
+  for (const kind of ['field_declaration', 'property_declaration', 'property_signature', 'field_definition']) {
+    for (const decl of node.descendantsOfType(kind)) {
+      const typeNode = memberTypeNode(decl);
+      if (typeNode) types.push(typeNode.text);
+    }
+  }
+  return [...new Set(types)];
+}
+
+function extractCtorParamTypes(node) {
+  const types = [];
+  for (const ctorKind of ['constructor_declaration', 'method_definition']) {
+    for (const ctor of node.descendantsOfType(ctorKind)) {
+      if (ctorKind === 'method_definition') {
+        const nameField = ctor.childForFieldName('name');
+        if (!nameField || nameField.text !== 'constructor') continue;
+      }
+      const plist = ctor.childForFieldName('parameters') || ctor.descendantsOfType('parameter_list')[0];
+      if (!plist) continue;
+      for (const param of plist.descendantsOfType('parameter')) {
+        const kids = param.namedChildren.filter((c) => c.type !== 'modifier');
+        const typeNode = param.childForFieldName('type') || kids[0];
+        if (typeNode) types.push(typeNode.text);
+      }
+    }
+  }
+  return [...new Set(types)];
+}
+
 function extractCallee(node, source, language) {
   if (language === 'ruby') {
     const methodField = node.childForFieldName('method');
@@ -174,7 +229,11 @@ function analyzeFile(file) {
     const imports = [];
 
     const visit = (node) => {
-      const kind = isKind(node, cfg.class) ? 'class' : isKind(node, cfg.method) ? 'method' : null;
+      const kind = isKind(node, cfg.class)
+        ? mapKind(node.type)
+        : isKind(node, cfg.method)
+          ? 'method'
+          : null;
       if (kind) {
         const nameField = node.childForFieldName('name');
         const name = nameField ? normalizeName(nameField.text) : null;
@@ -250,6 +309,8 @@ function analyzeFile(file) {
         structuralHash,
         calls,
         bases: decl.bases || [],
+        fieldTypes: decl.kind === 'method' ? [] : extractFieldTypes(decl.node),
+        injectedTypes: decl.kind === 'method' ? [] : extractCtorParamTypes(decl.node),
       });
     }
 
@@ -260,7 +321,40 @@ function analyzeFile(file) {
       for (const base of entity.bases) {
         const target = entityBySymbol.get(base);
         if (target && target.key !== entity.key) {
-          relationships.push({ from: entity.key, to: target.key, type: 'Inherits', evidence: null, confidence: 1, isStatic: true });
+          const type = target.kind === 'interface' ? 'Implements' : 'Inherits';
+          relationships.push({ from: entity.key, to: target.key, type, evidence: null, confidence: 1, isStatic: true });
+        }
+      }
+    }
+
+    for (const entity of entitiesOut) {
+      for (const fieldType of entity.fieldTypes) {
+        const target = entityBySymbol.get(fieldType);
+        if (target && target.key !== entity.key) {
+          relationships.push({
+            from: entity.key,
+            to: target.key,
+            type: 'FieldDependency',
+            evidence: `${entity.path}:${entity.startLine}`,
+            confidence: 0.9,
+            isStatic: true,
+          });
+        }
+      }
+    }
+
+    for (const entity of entitiesOut) {
+      for (const injectedType of entity.injectedTypes) {
+        const target = entityBySymbol.get(injectedType);
+        if (target && target.key !== entity.key) {
+          relationships.push({
+            from: entity.key,
+            to: target.key,
+            type: 'Injected',
+            evidence: `${entity.path}:${entity.startLine}`,
+            confidence: 0.95,
+            isStatic: true,
+          });
         }
       }
     }

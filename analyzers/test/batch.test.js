@@ -64,3 +64,27 @@ test('cross-file edge confidence is marked lower', async () => {
   const crossEdges = result.relationships.filter((r) => r.confidence < 1);
   assert.ok(crossEdges.length > 0);
 });
+
+test('cross-file implements resolves to interface', async () => {
+  await Parser.init();
+  const result = await analyzeBatch([
+    { path: 'src/Api/IAuditable.cs', content: `public interface IAuditable { DateTime? UpdatedAt { get; set; } }` },
+    { path: 'src/Domain/Payment.cs', content: `public class Payment : IAuditable { public DateTime? UpdatedAt { get; set; } }` },
+  ]);
+  const edge = result.relationships.find((r) => r.type === 'Implements');
+  assert.ok(edge, 'cross-file Implements edge must exist');
+  assert.equal(edge.from.split('::').pop(), 'Payment');
+  assert.equal(edge.to.split('::').pop(), 'IAuditable');
+});
+
+test('cross-file injected dependency resolves', async () => {
+  await Parser.init();
+  const result = await analyzeBatch([
+    { path: 'src/Infra/PaymentRepo.cs', content: `public class PaymentRepo { }` },
+    { path: 'src/Orders/OrderService.cs', content: `public class OrderService\n{\n    public OrderService(PaymentRepo repo) { }\n}` },
+  ]);
+  const edge = result.relationships.find((r) => r.type === 'Injected');
+  assert.ok(edge, 'cross-file Injected edge must exist');
+  assert.equal(edge.from.split('::').pop(), 'OrderService');
+  assert.equal(edge.to.split('::').pop(), 'PaymentRepo');
+});
