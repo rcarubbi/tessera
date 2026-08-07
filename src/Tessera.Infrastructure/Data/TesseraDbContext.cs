@@ -20,6 +20,7 @@ public class TesseraDbContext : DbContext
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
     public DbSet<GitHubUser> GitHubUsers => Set<GitHubUser>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
+    public DbSet<AiSettings> AiSettings => Set<AiSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +128,13 @@ public class TesseraDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(m => m.RepositoryId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiSettings>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.BaseUrl).HasMaxLength(512);
+            e.Property(s => s.ApiKey).HasMaxLength(512);
         });
     }
 }

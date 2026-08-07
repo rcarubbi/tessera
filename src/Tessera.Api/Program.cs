@@ -27,8 +27,10 @@ builder.Services.AddSingleton<IGitHubOAuthClient>(sp =>
     return new GitHubOAuthClient(sp.GetRequiredService<IHttpClientFactory>(), options);
 });
 builder.Services.AddSingleton<TokenBudgetTracker>();
+builder.Services.AddSingleton<AiSettingsCache>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IProviderRegistry>(sp => sp.GetRequiredService<ProviderRegistry>());
+builder.Services.AddScoped<AiSettingsService>();
 builder.Services.AddScoped<GraphQueryService>();
 builder.Services.AddScoped<AccessControlService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
@@ -50,6 +52,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         await db.Database.MigrateAsync();
     }
+    await scope.ServiceProvider.GetRequiredService<AiSettingsCache>().RefreshAsync();
 }
 
 if (app.Environment.IsDevelopment())
@@ -149,6 +152,7 @@ app.MapAuthEndpoints();
 app.MapQueryEndpoints();
 app.MapChatEndpoints();
 app.MapReviewEndpoints();
+app.MapSettingsEndpoints();
 
 app.Run();
 

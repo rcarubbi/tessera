@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.Extensions.Options;
 using Tessera.Domain.Ports;
 
 namespace Tessera.Infrastructure.Ai;
@@ -16,32 +15,48 @@ public interface IProviderRegistry
 
 public sealed class ProviderRegistry : IProviderRegistry
 {
-    private readonly IReadOnlyDictionary<string, IChatProvider> _providers;
-    private readonly AiOptions _options;
+    private readonly IHttpClientFactory _factory;
+    private readonly AiSettingsCache _cache;
+    private long _version = -1;
+    private IReadOnlyDictionary<string, IChatProvider>? _providers;
 
-    public ProviderRegistry(IHttpClientFactory factory, IOptions<AiOptions> options)
+    public ProviderRegistry(IHttpClientFactory factory, AiSettingsCache cache)
     {
-        _options = options.Value;
-        _providers = _options.Providers
-            .Where(p => !string.IsNullOrEmpty(p.Name) && !string.IsNullOrEmpty(p.BaseUrl) && !string.IsNullOrEmpty(p.ApiKey))
-            .ToDictionary(
-                p => p.Name,
-                p => (IChatProvider)new OpenAiCompatibleChatProvider(factory.CreateClient($"ai-{p.Name}"), p),
-                StringComparer.OrdinalIgnoreCase);
+        _factory = factory;
+        _cache = cache;
+    }
+
+    private IReadOnlyDictionary<string, IChatProvider> Providers
+    {
+        get
+        {
+            var snapshot = _cache.GetSnapshot();
+            if (_providers is null || _version != snapshot.Version)
+            {
+                _version = snapshot.Version;
+                _providers = snapshot.Providers
+                    .Where(p => !string.IsNullOrEmpty(p.Name) && !string.IsNullOrEmpty(p.BaseUrl) && !string.IsNullOrEmpty(p.ApiKey))
+                    .ToDictionary(
+                        p => p.Name,
+                        p => (IChatProvider)new OpenAiCompatibleChatProvider(_factory.CreateClient($"ai-{p.Name}"), p),
+                        StringComparer.OrdinalIgnoreCase);
+            }
+            return _providers;
+        }
     }
 
     public IChatProvider? Get(string? name) =>
-        !string.IsNullOrEmpty(name) && _providers.TryGetValue(name, out var provider) ? provider : null;
+        !string.IsNullOrEmpty(name) && Providers.TryGetValue(name, out var provider) ? provider : null;
 
-    public IChatProvider? Primary => Get(_options.Primary) ?? _providers.Values.FirstOrDefault();
+    public IChatProvider? Primary => Get(_cache.GetSnapshot().Primary) ?? Providers.Values.FirstOrDefault();
 
-    public IChatProvider? LargeTier => Get(_options.LargeTier);
+    public IChatProvider? LargeTier => Get(_cache.GetSnapshot().LargeTier);
 
-    public IChatProvider? Fallback => Get(_options.Fallback);
+    public IChatProvider? Fallback => Get(_cache.GetSnapshot().Fallback);
 
-    public IEmbeddingProvider? Embedding => (Get(_options.Embedding) ?? Primary) as IEmbeddingProvider;
+    public IEmbeddingProvider? Embedding => (Get(_cache.GetSnapshot().Embedding) ?? Primary) as IEmbeddingProvider;
 
-    public int Count => _providers.Count;
+    public int Count => Providers.Count;
 }
 
 public static class RetryPolicy

@@ -124,3 +124,24 @@ export type ChainItem = {
   confidence: number;
 };
 export type Chain = { entity: string; commitSha: string; items: ChainItem[] };
+
+export type AiProviderCatalogItem = { name: string; baseUrl: string; model: string };
+
+export type AiSettings = {
+  providerName: string;
+  baseUrl: string;
+  model: string;
+  apiKeyMasked: string | null;
+  hasApiKey: boolean;
+  fallbackProviderName: string | null;
+  updatedAt: string | null;
+  availableProviders: AiProviderCatalogItem[];
+};
+
+export type AiSettingsRequest = {
+  providerName: string;
+  baseUrl: string;
+  model: string;
+  apiKey?: string | null;
+  fallbackProviderName?: string | null;
+};

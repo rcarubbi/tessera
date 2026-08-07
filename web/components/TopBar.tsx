@@ -30,6 +30,16 @@ export function TopBar() {
             >
               Repositories
             </Link>
+            <Link
+              href="/settings"
+              className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+                pathname === "/settings" || pathname.startsWith("/settings/")
+                  ? "bg-inset text-fg"
+                  : "text-dim hover:text-fg"
+              }`}
+            >
+              Settings
+            </Link>
           </nav>
         )}
         <div className="flex-1" />

@@ -12,6 +12,7 @@ builder.Services.AddTesseraInfrastructure(builder.Configuration);
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<RuleBasedSummarizer>();
 builder.Services.AddSingleton<TokenBudgetTracker>();
+builder.Services.AddSingleton<AiSettingsCache>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IProviderRegistry>(sp => sp.GetRequiredService<ProviderRegistry>());
 builder.Services.AddSingleton<ISemanticSummarizer, AiSummarizer>();

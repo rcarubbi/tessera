@@ -60,6 +60,21 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: await headers(),
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (res.status === 401) throw new ApiError(401, "Unauthorized");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(res.status, text || res.statusText);
+  }
+  return res.json() as Promise<T>;
+}
+
 export type ChatStreamEvent = {
   kind: "mode" | "warnings" | "delta" | "citations" | "error";
   mode?: string;
