@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { apiGet } from "@/lib/api";
 import type { Graph, GraphEdge, GraphNode } from "@/lib/types";
 import type { GraphCanvasRef, InternalGraphNode } from "reagraph";
-import { card, cardError, checkbox, select } from "@/lib/ui";
+import { card, cardError, select } from "@/lib/ui";
 
 const GraphCanvas = dynamic(() => import("reagraph").then((m) => m.GraphCanvas), {
   ssr: false,
@@ -246,7 +246,7 @@ export default function GraphView({
         <button
           type="button"
           aria-expanded="false"
-          className="hs-accordion-toggle flex w-full cursor-pointer items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-fg select-none"
+          className="hs-accordion-toggle flex w-full cursor-pointer items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-fg select-none"
         >
           <svg
             viewBox="0 0 16 16"
@@ -259,45 +259,54 @@ export default function GraphView({
           </svg>
           Settings
         </button>
-        <div className="hs-accordion-content flex flex-wrap items-center gap-4 border-t border-border px-3 py-2.5" style={{ display: "none" }}>
-          <label className="flex items-center gap-1.5 text-[13px]">
-            <span className="text-dim">Module:</span>
-            <select className={select} value={module} onChange={(e) => setModule(e.target.value)}>
-              <option value="">All</option>
-              {modules.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </label>
-          <div className="flex flex-wrap items-center gap-3">
-            {[...new Set(graph.edges.map((e) => e.type))].sort().map((t) => (
-              <label key={t} className="flex cursor-pointer items-center gap-1.5 text-xs select-none">
-                <input type="checkbox" className={checkbox} checked={edgeTypes.has(t)} onChange={() => toggleEdgeType(t)} />
-                {t}
-              </label>
-            ))}
+        <div className="hs-accordion-content space-y-4 border-t border-border px-4 py-3.5" style={{ display: "none" }}>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Module</span>
+              <select className={select} value={module} onChange={(e) => setModule(e.target.value)}>
+                <option value="">All</option>
+                {modules.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Expand</span>
+              <select className={select} value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
+                <option value={1}>1 hop</option>
+                <option value={2}>2 hops</option>
+                <option value={3}>3 hops</option>
+              </select>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 pb-1 text-[13px] select-none">
+              <span className="relative inline-flex">
+                <input
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={showMethods}
+                  onChange={(e) => setShowMethods(e.target.checked)}
+                />
+                <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
+                <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
+              </span>
+              <span className="text-dim">Show method nodes</span>
+            </label>
           </div>
-          <label className="flex items-center gap-1.5 text-[13px]">
-            <span className="text-dim">Expand:</span>
-            <select className={select} value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
-              <option value={1}>1 hop</option>
-              <option value={2}>2 hops</option>
-              <option value={3}>3 hops</option>
-            </select>
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-[13px] select-none">
-            <span className="relative inline-flex">
-              <input
-                type="checkbox"
-                className="peer sr-only"
-                checked={showMethods}
-                onChange={(e) => setShowMethods(e.target.checked)}
-              />
-              <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
-              <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
-            </span>
-            <span className="text-dim">Show method nodes</span>
-          </label>
+          <div>
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-dim">Edge types</div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2.5">
+              {[...new Set(graph.edges.map((e) => e.type))].sort().map((t) => (
+                <label key={t} className="flex cursor-pointer items-center gap-2 text-xs select-none">
+                  <span className="relative inline-flex">
+                    <input type="checkbox" className="peer sr-only" checked={edgeTypes.has(t)} onChange={() => toggleEdgeType(t)} />
+                    <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
+                    <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
+                  </span>
+                  {t}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

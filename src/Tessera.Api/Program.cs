@@ -139,7 +139,7 @@ app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, HttpContext 
         .ToListAsync());
 });
 
-app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, HttpContext context, TesseraDbContext db) =>
+app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, ReprocessRequest? request, HttpContext context, TesseraDbContext db) =>
 {
     var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
     if (guarded is not null) return guarded;
@@ -150,9 +150,26 @@ app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, HttpContext
         return Results.NotFound(new { error = "Repository not found" });
     }
 
+    var mode = request?.Mode ?? ReprocessMode.Full;
+    var includeStatic = request?.IncludeStatic ?? false;
+    var includeAi = request?.IncludeAi ?? false;
+
+    if (mode == ReprocessMode.Incremental && !includeStatic && !includeAi)
+    {
+        return Results.BadRequest(new { error = "Incremental reprocess requires at least one analysis option (static and/or AI)." });
+    }
+
     repo.Status = ProcessingStatus.Pending;
     repo.CancelRequested = false;
-    repo.LastProcessedCommit = null;
+    if (mode == ReprocessMode.Full)
+    {
+        repo.LastProcessedCommit = null;
+    }
+    repo.ReprocessMode = mode;
+    repo.IncludeStaticAnalysis = includeStatic;
+    repo.IncludeAiAnalysis = includeAi;
+    repo.AnalysisStartedAt = null;
+    repo.CompletedAt = null;
     repo.StageStartedAt = null;
     repo.ProcessedCount = 0;
     repo.TotalCount = 0;
@@ -203,5 +220,7 @@ app.MapReviewEndpoints();
 app.MapSettingsEndpoints();
 
 app.Run();
+
+public sealed record ReprocessRequest(ReprocessMode Mode, bool IncludeStatic = false, bool IncludeAi = false);
 
 public partial class Program { }

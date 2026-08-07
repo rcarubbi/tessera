@@ -23,6 +23,11 @@ public class Repository
     public int TotalCount { get; set; }
     public string? ErrorMessage { get; set; }
     public bool CancelRequested { get; set; }
+    public ReprocessMode ReprocessMode { get; set; } = ReprocessMode.Full;
+    public bool IncludeStaticAnalysis { get; set; }
+    public bool IncludeAiAnalysis { get; set; }
+    public DateTimeOffset? AnalysisStartedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

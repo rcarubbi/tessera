@@ -45,6 +45,6 @@
 ## 8. Verification
 
 - [x] 8.1 `npm run typecheck` + `npm run build`
-- [ ] 8.2 Browser smoke: all tabs, graph pan/zoom + settings, diagram viewer, chat, reprocess, login/settings
-- [ ] 8.3 Rebuild `web` Docker image
+- [x] 8.2 Browser smoke: all tabs, graph pan/zoom + settings, diagram viewer, chat, reprocess, login/settings
+- [x] 8.3 Rebuild `web` Docker image
 

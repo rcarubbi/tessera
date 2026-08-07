@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
-import ReprocessButton from "@/components/ReprocessButton";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, ApiError } from "@/lib/api";
 import { card, cardError, field, statCard, statLabel, statValue } from "@/lib/ui";
@@ -142,7 +141,6 @@ export default function ReposPage() {
                         Track progress →
                       </Link>
                     </span>
-                    <ReprocessButton repoId={repo.id} fullName={repo.fullName} onReprocessed={load} />
                   </div>
                 </div>
               );

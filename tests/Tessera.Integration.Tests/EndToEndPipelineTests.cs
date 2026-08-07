@@ -259,6 +259,7 @@ public sealed class EndToEndPipelineTests : IDisposable
                 BaseUrl = $"http://localhost:{_sidecarPort}"
             })),
             new RuleBasedSummarizer(),
+            new RuleBasedSummarizer(),
             new FileSystemObjectStore(_objectRoot),
             new NoopGitHubAppClient(),
             new NoopOverviewService(),

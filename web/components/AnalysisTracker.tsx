@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
-import ReprocessButton from "@/components/ReprocessButton";
+import ReprocessControls from "@/components/ReprocessControls";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import type { Repository } from "@/lib/types";
@@ -31,6 +31,7 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [frozenAt, setFrozenAt] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -59,6 +60,14 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
   const isCancelled = repo !== null && repo.status === 7;
   const inProgress = repo !== null && repo.status >= 1 && repo.status <= 4;
 
+  useEffect(() => {
+    if (terminal && frozenAt === null) {
+      setFrozenAt(Date.now());
+    } else if (!terminal && frozenAt !== null) {
+      setFrozenAt(null);
+    }
+  }, [terminal, frozenAt]);
+
   const cancel = async () => {
     setCancelling(true);
     setCancelError(null);
@@ -83,9 +92,17 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
     return () => clearInterval(timer);
   }, []);
 
-  const stageStartedAt = repo?.stageStartedAt ? new Date(repo.stageStartedAt) : null;
+  const analysisStartedAt = repo?.analysisStartedAt ? new Date(repo.analysisStartedAt) : null;
+  const completedAt = repo?.completedAt ? new Date(repo.completedAt) : null;
+  const completedMs =
+    repo?.completedAt && analysisStartedAt && completedAt && !isNaN(completedAt.getTime())
+      ? completedAt.getTime() - analysisStartedAt.getTime()
+      : null;
   const elapsedMs =
-    repo && stageStartedAt && !isNaN(stageStartedAt.getTime()) ? now - stageStartedAt.getTime() : null;
+    repo && analysisStartedAt && !isNaN(analysisStartedAt.getTime())
+      ? (terminal ? (completedMs ?? frozenAt ?? now) : now) - analysisStartedAt.getTime()
+      : null;
+  const timeLabel = repo?.status === 5 && completedMs !== null ? "Total processing time" : "Processing time";
   const showProgress =
     repo !== null &&
     repo.totalCount > 0 &&
@@ -217,14 +234,14 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
                 </div>
               </div>
 
+              <div className="mb-4">
+                <ReprocessControls repoId={repoId} fullName={repo.fullName} disabled={inProgress} onReprocessed={load} />
+              </div>
+
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div className={statCard}>
                   <span className={statValue}>{fmtDuration(elapsedMs)}</span>
-                  <span className={statLabel}>
-                    {stageStartedAt && !isNaN(stageStartedAt.getTime())
-                      ? `Current stage time (since ${stageStartedAt.toLocaleTimeString()})`
-                      : "Current stage time"}
-                  </span>
+                  <span className={statLabel}>{timeLabel}</span>
                 </div>
                 <div className={statCard}>
                   <span className={statValue}>
@@ -246,9 +263,6 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
                       {repo.errorMessage}
                     </pre>
                   )}
-                  <div>
-                    <ReprocessButton repoId={repoId} fullName={repo.fullName} onReprocessed={load} />
-                  </div>
                 </div>
               )}
 

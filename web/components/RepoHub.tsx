@@ -11,7 +11,6 @@ import EntityPanel from "@/components/EntityPanel";
 import FilesPanel from "@/components/FilesPanel";
 import OverviewPanel from "@/components/OverviewPanel";
 import StatusBadge from "@/components/StatusBadge";
-import ReprocessButton from "@/components/ReprocessButton";
 import { TopBar } from "@/components/TopBar";
 import { apiGet } from "@/lib/api";
 import { card, cardError } from "@/lib/ui";
@@ -100,7 +99,6 @@ export default function RepoHub({ repoId }: { repoId: string }) {
               >
                 Track analysis →
               </Link>
-              <ReprocessButton repoId={repoId} fullName={repo?.fullName ?? repoId} onReprocessed={loadRepo} />
               <SnapshotSelector snapshots={snapshots} commit={commit} onChange={setCommit} loading={snapshotsLoading} />
             </div>
           </div>

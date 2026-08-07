@@ -24,7 +24,7 @@ public sealed class ComposedSnapshot
 
 public static class SnapshotComposer
 {
-    private const string PendingContent = "// analysis pending";
+    public const string PendingContent = "// analysis pending";
 
     public static ComposedSnapshot Compose(
         Guid repositoryId,

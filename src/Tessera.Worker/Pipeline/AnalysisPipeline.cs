@@ -25,6 +25,7 @@ public sealed class AnalysisPipeline(
     IGitClient git,
     IParserSidecarClient parser,
     ISemanticSummarizer summarizer,
+    RuleBasedSummarizer ruleBased,
     IObjectStore store,
     IGitHubAppClient github,
     IOverviewService overviewService,
@@ -35,6 +36,7 @@ public sealed class AnalysisPipeline(
 {
     private readonly string _workRoot = Path.Combine(options.Value.WorkRoot, "repos");
     private readonly AiOptions _aiOptions = aiOptions.Value;
+    private readonly RuleBasedSummarizer _ruleBased = ruleBased;
 
     public async Task ProcessAsync(Repository repo, CancellationToken ct = default)
     {
@@ -48,12 +50,21 @@ public sealed class AnalysisPipeline(
             var defaultBranch = await git.EnsureCloneAsync(await ResolveCloneUrlAsync(repo, ct), workDir, ct);
             var head = await git.ResolveHeadAsync(workDir, defaultBranch, ct);
 
-            if (string.Equals(head, repo.LastProcessedCommit, StringComparison.OrdinalIgnoreCase))
+            if (repo.ReprocessMode != ReprocessMode.Incremental
+                && string.Equals(head, repo.LastProcessedCommit, StringComparison.OrdinalIgnoreCase))
             {
                 repo.Status = ProcessingStatus.Completed;
+                repo.CompletedAt = DateTimeOffset.UtcNow;
                 repo.UpdatedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(ct);
                 return;
+            }
+
+            if (repo.AnalysisStartedAt is null)
+            {
+                repo.AnalysisStartedAt = DateTimeOffset.UtcNow;
+                repo.CompletedAt = null;
+                await db.SaveChangesAsync(ct);
             }
 
             await SetStageAsync(repo, ProcessingStatus.Parsing, ct);
@@ -64,6 +75,17 @@ public sealed class AnalysisPipeline(
 
             var previousNodes = await LoadPreviousNodesAsync(repo, ct);
             var aiContent = await BuildAiContentAsync(parse, previousNodes, repo, ct);
+
+            if (repo.ReprocessMode == ReprocessMode.Incremental && aiContent.Count == 0)
+            {
+                repo.Status = ProcessingStatus.Completed;
+                repo.LastProcessedCommit = head;
+                repo.CompletedAt = DateTimeOffset.UtcNow;
+                repo.UpdatedAt = DateTimeOffset.UtcNow;
+                ResetReprocessOptions(repo);
+                await db.SaveChangesAsync(ct);
+                return;
+            }
 
             var linked = await linkingService.LinkAsync(parse, repo.GitHubId, ct);
             foreach (var edge in linked)
@@ -107,7 +129,9 @@ public sealed class AnalysisPipeline(
             repo.NodeCount = composed.Nodes.Count;
             repo.EdgeCount = composed.Edges.Count;
             repo.LastSnapshotAt = DateTimeOffset.UtcNow;
+            repo.CompletedAt = DateTimeOffset.UtcNow;
             repo.UpdatedAt = DateTimeOffset.UtcNow;
+            ResetReprocessOptions(repo);
             await db.SaveChangesAsync(ct);
         }
         catch (CancelRequestedException)
@@ -212,6 +236,12 @@ public sealed class AnalysisPipeline(
 
     private async Task<Dictionary<string, KnowledgeNode>> LoadPreviousNodesAsync(Repository repo, CancellationToken ct)
     {
+        if (repo.ReprocessMode == ReprocessMode.Full)
+        {
+            // Full reprocess starts from scratch: every node is re-analyzed.
+            return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
+        }
+
         var commit = repo.LastProcessedCommit;
         if (commit is null)
         {
@@ -264,16 +294,23 @@ public sealed class AnalysisPipeline(
         foreach (var entity in parse.Entities)
         {
             ct.ThrowIfCancellationRequested();
-            var needsAi = !previousNodes.TryGetValue(entity.Key, out var previous)
-                || previous.StructuralHash != entity.StructuralHash
-                || previous.PromptVersion != summarizer.PromptVersion;
 
-            if (needsAi)
+            previousNodes.TryGetValue(entity.Key, out var previous);
+            var changed = previous is null || previous.StructuralHash != entity.StructuralHash;
+            var needsAi = repo.ReprocessMode != ReprocessMode.Incremental
+                || (repo.IncludeAiAnalysis && (changed || LacksAi(previous, summarizer.PromptVersion)));
+            var needsStatic = repo.ReprocessMode == ReprocessMode.Incremental
+                && repo.IncludeStaticAnalysis
+                && (changed || LacksStatic(previous));
+
+            if (needsAi || needsStatic)
             {
                 var relationships = parse.Relationships
                     .Where(r => r.From == entity.Key || r.To == entity.Key)
                     .ToList();
-                aiContent[entity.Key] = await summarizer.SummarizeAsync(entity, relationships, repo.GitHubId, ct);
+                aiContent[entity.Key] = needsAi
+                    ? await summarizer.SummarizeAsync(entity, relationships, repo.GitHubId, ct)
+                    : await _ruleBased.SummarizeAsync(entity, relationships, repo.GitHubId, ct);
             }
 
             processed++;
@@ -286,6 +323,40 @@ public sealed class AnalysisPipeline(
             }
         }
         return aiContent;
+    }
+
+    private static bool LacksAi(KnowledgeNode? previous, string currentPromptVersion)
+    {
+        if (previous is null)
+        {
+            return true;
+        }
+        var model = previous.Model;
+        if (string.IsNullOrEmpty(model)
+            || string.Equals(model, "rule-based", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return string.IsNullOrWhiteSpace(previous.Content)
+            || previous.Content == SnapshotComposer.PendingContent
+            || previous.PromptVersion != currentPromptVersion;
+    }
+
+    private static bool LacksStatic(KnowledgeNode? previous)
+    {
+        if (previous is null)
+        {
+            return true;
+        }
+        return string.IsNullOrWhiteSpace(previous.Content)
+            || previous.Content == SnapshotComposer.PendingContent;
+    }
+
+    private static void ResetReprocessOptions(Repository repo)
+    {
+        repo.ReprocessMode = ReprocessMode.Full;
+        repo.IncludeStaticAnalysis = false;
+        repo.IncludeAiAnalysis = false;
     }
 
     private async Task PersistAsync(

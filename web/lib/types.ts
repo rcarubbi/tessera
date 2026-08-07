@@ -18,6 +18,8 @@ export type Repository = {
   totalCount: number;
   errorMessage: string | null;
   cancelRequested: boolean;
+  analysisStartedAt: string | null;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
