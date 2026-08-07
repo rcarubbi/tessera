@@ -37,8 +37,12 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
   };
 
   return (
-    <div className={`${"rounded-lg border border-border bg-panel"} flex flex-col gap-3`}>
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <div className="text-sm font-medium text-fg">Reprocess</div>
+          <div className="text-xs text-dim">Re-run analysis of {fullName}</div>
+        </div>
         <div className="text-sm font-medium">Reprocess</div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -64,8 +68,8 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
       </div>
 
       {showOptions && (
-        <div className="flex flex-col gap-3 border-t border-border pt-3">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col gap-4 border-t border-border pt-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <label className="flex cursor-pointer items-center gap-2 text-[13px] select-none">
               <span className="relative inline-flex">
                 <input
@@ -93,7 +97,7 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
               <span className="text-dim">Include AI analysis</span>
             </label>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               className={`${btn} ${btnSmall} ${btnPrimary}`}
@@ -112,10 +116,10 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
       )}
 
       {message && (
-        <div className={`text-xs ${message.tone === "good" ? "text-good" : "text-danger"}`}>{message.text}</div>
+        <div className={`px-1 text-xs ${message.tone === "good" ? "text-good" : "text-danger"}`}>{message.text}</div>
       )}
 
-      {disabled && <div className="text-xs text-dim">Disabled while an analysis is running.</div>}
+      {disabled && <div className="px-1 text-xs text-dim">Disabled while an analysis is running.</div>}
     </div>
   );
 }
