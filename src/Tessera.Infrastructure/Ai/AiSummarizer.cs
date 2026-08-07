@@ -139,6 +139,8 @@ public sealed class AiSummarizer : ISemanticSummarizer
             under the header `## Class diagram`. For a method/function entity, add a Mermaid
             `sequenceDiagram` block under the header `## Sequence diagram`. The diagram must be wrapped
             in ```mermaid fences and must reflect the entity's structure and its main relationships.
+            Keep the diagram small and readable: at most 15 nodes and 15 edges. Prefer the most
+            important direct relationships over exhaustive ones; never list every consumer.
             ## Architecture
             (two bullets: `- Bounded context: <name>` inferred from the codebase layout, and
             `- Role: <role>` such as Controller, Service, Repository, Domain, Contract, DTO,

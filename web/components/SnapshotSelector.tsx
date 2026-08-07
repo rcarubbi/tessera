@@ -1,6 +1,7 @@
 "use client";
 
 import type { Snapshot } from "@/lib/types";
+import { badge, spinner } from "@/lib/ui";
 
 export default function SnapshotSelector({
   snapshots,
@@ -15,15 +16,16 @@ export default function SnapshotSelector({
 }) {
   if (loading) {
     return (
-      <span className="badge">
-        <span className="spinner" /> loading snapshots…
+      <span className={badge}>
+        <span className={spinner} /> loading snapshots…
       </span>
     );
   }
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span className="muted">Snapshot:</span>
+    <label className="flex items-center gap-2">
+      <span className="text-dim">Snapshot:</span>
       <select
+        className="rounded-lg border border-border bg-inset px-3 py-2 text-sm text-fg outline-none focus:border-accent"
         value={commit ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
       >

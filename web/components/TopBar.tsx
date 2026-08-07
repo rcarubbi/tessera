@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthContext";
+import { badge, btn, btnSmall } from "@/lib/ui";
 
 export function TopBar() {
   const { token, user, logout, hydrated } = useAuth();
@@ -47,12 +48,14 @@ export function TopBar() {
           <>
             {user && (
               <span className="flex items-center gap-2 text-[13px]">
-                {user.avatarUrl && <img src={user.avatarUrl} width={24} height={24} alt="" className="avatar" />}
+                {user.avatarUrl && (
+                  <img src={user.avatarUrl} width={24} height={24} alt="" className="h-6 w-6 rounded-full object-cover" />
+                )}
                 <span className="hidden sm:inline">{user.name || user.login}</span>
-                {user.isAdmin && <span className="badge">admin</span>}
+                {user.isAdmin && <span className={badge}>admin</span>}
               </span>
             )}
-            <button className="btn btn-small" onClick={logout}>
+            <button type="button" className={`${btn} ${btnSmall}`} onClick={logout}>
               Sign out
             </button>
           </>

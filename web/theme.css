@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@source "./node_modules/preline/dist/*.js";
+@import "./node_modules/preline/variants.css";
+@import "./app/globals.css";
+@plugin "@tailwindcss/forms";
+
+@theme {
+  --color-bg: #0d1117;
+  --color-panel: #161b22;
+  --color-inset: #1c2129;
+  --color-border: #2d333b;
+  --color-fg: #e6edf3;
+  --color-dim: #8b949e;
+  --color-accent: #58a6ff;
+  --color-good: #3fb950;
+  --color-danger: #f85149;
+  --color-warn: #d29922;
+  --color-purple: #bc8cff;
+  --color-orange: #f0883e;
+}

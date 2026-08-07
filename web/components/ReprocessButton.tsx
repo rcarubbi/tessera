@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { apiPost, ApiError } from "@/lib/api";
+import { btn, btnSmall, spinner } from "@/lib/ui";
 
 type Props = {
   repoId: string;
@@ -33,12 +34,12 @@ export default function ReprocessButton({ repoId, fullName, onReprocessed }: Pro
     <span className="inline-flex flex-col items-end gap-1">
       <button
         type="button"
-        className="btn btn-small"
+        className={`${btn} ${btnSmall}`}
         onClick={reprocess}
         disabled={state === "loading" || state === "done"}
         title={`Re-queue ${fullName} for reprocessing`}
       >
-        {state === "loading" && <span className="spinner" />}
+        {state === "loading" && <span className={spinner} />}
         {state === "done" ? "✓" : "↻"} {state === "done" ? "Requeued" : "Reprocess"}
       </button>
       {state === "error" && message && <span className="text-xs text-danger">{message}</span>}

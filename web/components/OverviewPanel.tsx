@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Markdown from "@/components/Markdown";
 import { apiGet } from "@/lib/api";
+import { badge, badgePurple, card, spinner } from "@/lib/ui";
 
 type Overview = {
   overview: string;
@@ -32,7 +33,7 @@ export default function OverviewPanel({ repoId }: { repoId: string }) {
   }, [repoId]);
 
   return (
-    <div className="card">
+    <div className={card}>
       <div className="mb-4">
         <h2 className="text-lg font-bold">Project overview</h2>
         <p className="text-sm text-dim">
@@ -41,19 +42,19 @@ export default function OverviewPanel({ repoId }: { repoId: string }) {
       </div>
 
       {loading && (
-        <div className="muted py-10 text-center">
-          <span className="spinner spinner-sm" /> Loading…
+        <div className="flex items-center justify-center gap-2 py-10 text-dim">
+          <span className={spinner} /> Loading…
         </div>
       )}
 
-      {error && <div className="muted py-10 text-center">{error}</div>}
+      {error && <div className="py-10 text-center text-dim">{error}</div>}
 
       {overview && (
         <div>
           <div className="mb-3 flex flex-wrap gap-2">
-            <span className="badge">{overview.nodeCount} nodes</span>
-            <span className="badge badge-purple">model {overview.model}</span>
-            <span className="badge">
+            <span className={badge}>{overview.nodeCount} nodes</span>
+            <span className={`${badge} ${badgePurple}`}>model {overview.model}</span>
+            <span className={badge}>
               {new Date(overview.generatedAt).toLocaleString()}
             </span>
           </div>

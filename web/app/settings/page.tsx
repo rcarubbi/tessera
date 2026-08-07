@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthContext";
 import { apiGet, apiPut, ApiError } from "@/lib/api";
 import { mergePresets } from "@/lib/aiPresets";
 import type { AiSettings, AiSettingsRequest } from "@/lib/types";
+import { badge, badgeGreen, btn, btnPrimary, card, cardError, field } from "@/lib/ui";
 
 export default function SettingsPage() {
   const { token, user, logout } = useAuth();
@@ -105,20 +106,20 @@ export default function SettingsPage() {
           {loading && <div className="text-dim">Loading settings…</div>}
 
           {!loading && (
-            <div className="card flex flex-col gap-4">
+            <div className={`${card} flex flex-col gap-4`}>
               {!isAdmin && (
-                <div className="rounded-md border border-border bg-inset px-3 py-2 text-[13px] text-dim">
+                <div className="rounded-lg border border-border bg-inset px-3 py-2 text-[13px] text-dim">
                   Only administrators can change AI settings.
                 </div>
               )}
 
-              {error && <div className="card card-error text-danger">{error}</div>}
-              {saved && <div className="rounded-md border border-good/40 bg-good/10 px-3 py-2 text-[13px] text-good">{saved}</div>}
+              {error && <div className={`${card} ${cardError} text-danger`}>{error}</div>}
+              {saved && <div className="rounded-lg border border-good/40 bg-good/10 px-3 py-2 text-[13px] text-good">{saved}</div>}
 
               <label className="flex flex-col gap-1.5 text-sm">
                 <span className="text-dim">Provider</span>
                 <select
-                  className="field"
+                  className={field}
                   value={providerName}
                   onChange={(e) => handleProviderChange(e.target.value)}
                 >
@@ -136,7 +137,7 @@ export default function SettingsPage() {
               <label className="flex flex-col gap-1.5 text-sm">
                 <span className="text-dim">Base URL</span>
                 <input
-                  className="field"
+                  className={field}
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="https://api.openai.com/v1"
@@ -146,7 +147,7 @@ export default function SettingsPage() {
               <label className="flex flex-col gap-1.5 text-sm">
                 <span className="text-dim">Model</span>
                 <input
-                  className="field"
+                  className={field}
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="gpt-4o-mini"
@@ -156,10 +157,10 @@ export default function SettingsPage() {
               <label className="flex flex-col gap-1.5 text-sm">
                 <span className="flex items-center gap-2 text-dim">
                   API key
-                  {settings?.hasApiKey && <span className="badge badge-green">stored · {settings.apiKeyMasked}</span>}
+                  {settings?.hasApiKey && <span className={`${badge} ${badgeGreen}`}>stored · {settings.apiKeyMasked}</span>}
                 </span>
                 <input
-                  className="field"
+                  className={field}
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
@@ -171,7 +172,7 @@ export default function SettingsPage() {
               <label className="flex flex-col gap-1.5 text-sm">
                 <span className="text-dim">Fallback provider (optional)</span>
                 <select
-                  className="field"
+                  className={field}
                   value={fallback}
                   onChange={(e) => setFallback(e.target.value)}
                 >
@@ -192,7 +193,7 @@ export default function SettingsPage() {
 
               <div className="flex items-center gap-3 border-t border-border pt-4">
                 <button
-                  className="btn btn-primary"
+                  className={`${btn} ${btnPrimary}`}
                   disabled={!isAdmin || saving || !providerName || !baseUrl || !model}
                   onClick={handleSave}
                 >

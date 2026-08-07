@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthContext";
 import { API_BASE } from "@/lib/api";
+import { card, field } from "@/lib/ui";
 
 export default function LoginPage() {
   const { login, logout, refreshUser } = useAuth();
@@ -72,11 +73,11 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="card flex flex-col gap-4">
+        <div className={`${card} flex flex-col gap-4`}>
           {githubEnabled && (
             <>
               <button
-                className="btn-block"
+                className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-inset px-4 text-sm font-medium text-fg transition-colors select-none hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
                 type="button"
                 onClick={startGithub}
                 disabled={checking}
@@ -101,7 +102,7 @@ export default function LoginPage() {
               </label>
               <input
                 id="key"
-                className={`field w-full ${error ? "border-danger/60" : ""}`}
+                className={`${field} ${error ? "border-danger/60" : ""}`}
                 type="password"
                 value={key}
                 onChange={(e) => {
@@ -112,8 +113,12 @@ export default function LoginPage() {
                 autoFocus
               />
             </div>
-            {error && <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>}
-            <button className="btn-block btn-block-primary" type="submit" disabled={checking || !key.trim()}>
+            {error && <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>}
+            <button
+              className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-4 text-sm font-semibold text-bg transition-colors select-none hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              type="submit"
+              disabled={checking || !key.trim()}
+            >
               {checking ? "Signing in…" : "Sign in"}
             </button>
           </form>

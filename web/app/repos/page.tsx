@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ReprocessButton from "@/components/ReprocessButton";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, ApiError } from "@/lib/api";
+import { card, cardError, field, statCard, statLabel, statValue } from "@/lib/ui";
 import type { Repository } from "@/lib/types";
 
 const STATUS_FAILED = 6;
@@ -75,38 +76,34 @@ export default function ReposPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search repositories…"
-              className="field w-64"
+              className={`${field} w-64`}
             />
           </div>
 
-          <div className="stat-grid mb-6">
-            <div className="stat-card">
-              <span className="stat-value">{stats.total}</span>
-              <span className="stat-label">Connected</span>
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className={statCard}>
+              <span className={statValue}>{stats.total}</span>
+              <span className={statLabel}>Connected</span>
             </div>
-            <div className="stat-card">
-              <span className="stat-value text-warn">{stats.analyzing}</span>
-              <span className="stat-label">Analyzing</span>
+            <div className={statCard}>
+              <span className={`${statValue} text-warn`}>{stats.analyzing}</span>
+              <span className={statLabel}>Analyzing</span>
             </div>
-            <div className="stat-card">
-              <span className="stat-value text-good">{stats.completed}</span>
-              <span className="stat-label">Completed</span>
+            <div className={statCard}>
+              <span className={`${statValue} text-good`}>{stats.completed}</span>
+              <span className={statLabel}>Completed</span>
             </div>
-            <div className="stat-card">
-              <span className="stat-value text-danger">{stats.failed}</span>
-              <span className="stat-label">Failed</span>
+            <div className={statCard}>
+              <span className={`${statValue} text-danger`}>{stats.failed}</span>
+              <span className={statLabel}>Failed</span>
             </div>
           </div>
 
-          {error && (
-            <div className="card card-error mb-4 text-danger">{error}</div>
-          )}
+          {error && <div className={`${card} ${cardError} mb-4 text-danger`}>{error}</div>}
           {!repos && !error && <div className="text-dim">Loading repositories…</div>}
-          {repos && repos.length === 0 && (
-            <div className="card text-dim">No connected repositories yet.</div>
-          )}
+          {repos && repos.length === 0 && <div className={card}>No connected repositories yet.</div>}
           {repos && repos.length > 0 && filtered.length === 0 && (
-            <div className="card text-dim">No repositories match &quot;{query}&quot;.</div>
+            <div className={card}>No repositories match &quot;{query}&quot;.</div>
           )}
 
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
@@ -115,7 +112,7 @@ export default function ReposPage() {
               return (
                 <div
                   key={repo.id}
-                  className={`card flex flex-col gap-2 transition-colors ${failed ? "card-error" : ""}`}
+                  className={`flex flex-col gap-2 rounded-xl border bg-panel p-4 transition-colors ${failed ? cardError : "border-border"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <Link href={`/repos/${repo.id}`} className="min-w-0 text-fg hover:text-accent">

@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiGet, apiPost } from "@/lib/api";
 import type { ReviewItem, ReviewList } from "@/lib/types";
+import { badge, badgeOrange, badgeYellow, btn, btnDanger, btnPrimary, btnSmall, card, field, path } from "@/lib/ui";
 
 export default function ReviewPanel({
   repoId,
@@ -47,58 +48,58 @@ export default function ReviewPanel({
     }
   };
 
-  if (loading && !review) return <div className="panel muted">Loading review queue…</div>;
-  if (error && !review) return <div className="panel text-danger">{error}</div>;
+  if (loading && !review) return <div className={card}>Loading review queue…</div>;
+  if (error && !review) return <div className={`${card} text-danger`}>{error}</div>;
   if (!review) return null;
 
   return (
     <div>
-      <div className="muted" style={{ marginBottom: 12 }}>
+      <div className="mb-3 text-dim">
         Review queue for commit <code>{review.commitSha.slice(0, 10)}</code> — {review.items.length} node(s) flagged.
       </div>
       {error && <div className="mb-3 text-danger">{error}</div>}
-      {review.items.length === 0 && <div className="panel muted">Queue is empty. All nodes reviewed.</div>}
+      {review.items.length === 0 && <div className={card}>Queue is empty. All nodes reviewed.</div>}
       {review.items.map((item) => (
-        <div key={item.nodeId} className="card" style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <div style={{ minWidth: 0 }}>
-              <strong style={{ cursor: "pointer" }} onClick={() => onSelect(item.key)}>{item.symbol}</strong>
-              <span className="path"> {item.key}</span>
-              <div className="muted" style={{ fontSize: 12 }}>{item.path}:{item.line}–{item.endLine}</div>
+        <div key={item.nodeId} className={`${card} mb-3`}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <strong className="cursor-pointer text-fg hover:text-accent" onClick={() => onSelect(item.key)}>{item.symbol}</strong>
+              <span className={path}> {item.key}</span>
+              <div className="text-xs text-dim">{item.path}:{item.line}–{item.endLine}</div>
             </div>
-            <span className={`badge ${item.confidence < 0.7 ? "badge-yellow" : "badge-orange"}`}>confidence {item.confidence.toFixed(2)}</span>
+            <span className={`${badge} ${item.confidence < 0.7 ? badgeYellow : badgeOrange}`}>confidence {item.confidence.toFixed(2)}</span>
           </div>
 
-          <div className="markdown" style={{ marginTop: 10 }}>
+          <div className="markdown mt-2.5">
             {editingId === item.nodeId ? (
               <textarea
                 value={editingContent}
                 onChange={(e) => setEditingContent(e.target.value)}
                 rows={10}
-                style={{ width: "100%" }}
+                className={`${field} font-mono`}
               />
             ) : (
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.content}</ReactMarkdown>
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <div className="mt-2.5 flex gap-2">
             {editingId === item.nodeId ? (
               <>
-                <button className="btn btn-primary btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "edit")}>
+                <button className={`${btn} ${btnPrimary} ${btnSmall}`} disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "edit")}>
                   Save version
                 </button>
-                <button className="btn small" onClick={() => setEditingId(null)}>Cancel</button>
+                <button className={`${btn} ${btnSmall}`} onClick={() => setEditingId(null)}>Cancel</button>
               </>
             ) : (
               <>
-                <button className="btn btn-primary btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "accept")}>
+                <button className={`${btn} ${btnPrimary} ${btnSmall}`} disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "accept")}>
                   Accept
                 </button>
-                <button className="btn small" disabled={busyId === item.nodeId} onClick={() => { setEditingContent(item.content); setEditingId(item.nodeId); }}>
+                <button className={`${btn} ${btnSmall}`} disabled={busyId === item.nodeId} onClick={() => { setEditingContent(item.content); setEditingId(item.nodeId); }}>
                   Edit
                 </button>
-                <button className="btn btn-danger btn-small" disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "dismiss")}>
+                <button className={`${btn} ${btnDanger} ${btnSmall}`} disabled={busyId === item.nodeId} onClick={() => act(item.nodeId, "dismiss")}>
                   Dismiss
                 </button>
               </>

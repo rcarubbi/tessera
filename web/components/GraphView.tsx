@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { apiGet } from "@/lib/api";
 import type { Graph, GraphEdge, GraphNode } from "@/lib/types";
 import type { GraphCanvasRef, InternalGraphNode } from "reagraph";
+import { card, cardError, checkbox, select } from "@/lib/ui";
 
 const GraphCanvas = dynamic(() => import("reagraph").then((m) => m.GraphCanvas), {
   ssr: false,
@@ -59,12 +60,14 @@ export default function GraphView({
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<GraphCanvasRef | null>(null);
+  const accordionRef = useRef<HTMLDivElement | null>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [module, setModule] = useState<string>("");
   const [edgeTypes, setEdgeTypes] = useState<Set<string>>(new Set());
   const [expandDepth, setExpandDepth] = useState(1);
+  const [showMethods, setShowMethods] = useState(true);
   const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
 
   const commitParam = commit ? `&commit=${encodeURIComponent(commit)}` : "";
@@ -82,6 +85,23 @@ export default function GraphView({
       .finally(() => setLoading(false));
   }, [repoId, commit, commitParam]);
 
+  const ready = !loading && !error && !!graph && graph.nodes.length > 0;
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    let instance: { destroy(): void } | null = null;
+    (async () => {
+      const { HSAccordion } = await import("preline/non-auto");
+      if (cancelled || !accordionRef.current) return;
+      instance = new HSAccordion(accordionRef.current);
+    })();
+    return () => {
+      cancelled = true;
+      instance?.destroy();
+    };
+  }, [ready]);
+
   const modules = useMemo(() => {
     if (!graph) return [] as string[];
     const set = new Set<string>();
@@ -94,8 +114,12 @@ export default function GraphView({
 
   const visibleNodes = useMemo(() => {
     if (!graph) return [] as GraphNode[];
-    return graph.nodes.filter((n) => !module || n.path.startsWith(module));
-  }, [graph, module]);
+    return graph.nodes.filter(
+      (n) =>
+        (!module || n.path.startsWith(module)) &&
+        (showMethods || (n.kind !== "Method" && n.kind !== "Function")),
+    );
+  }, [graph, module, showMethods]);
 
   const visibleKeys = useMemo(() => new Set(visibleNodes.map((n) => n.key)), [visibleNodes]);
 
@@ -204,47 +228,76 @@ export default function GraphView({
   };
 
   if (loading) {
-    return <div className="panel text-dim">Loading graph…</div>;
+    return <div className={card}>Loading graph…</div>;
   }
   if (error) {
-    return <div className="card card-error text-danger">{error}</div>;
+    return <div className={`${card} ${cardError} text-danger`}>{error}</div>;
   }
   if (!graph || graph.nodes.length === 0) {
-    return <div className="panel text-dim">No graph available for this snapshot.</div>;
+    return <div className={card}>No graph available for this snapshot.</div>;
   }
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg border border-border bg-panel px-3 py-2.5">
-        <label className="flex items-center gap-1.5 text-[13px]">
-          <span className="text-dim">Module:</span>
-          <select className="field" value={module} onChange={(e) => setModule(e.target.value)}>
-            <option value="">All</option>
-            {modules.map((m) => (
-              <option key={m} value={m}>{m}</option>
+      <div
+        ref={accordionRef}
+        className="hs-accordion --prevent-on-load-init mb-3 rounded-lg border border-border bg-panel"
+      >
+        <button
+          type="button"
+          aria-expanded="false"
+          className="hs-accordion-toggle flex w-full cursor-pointer items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-fg select-none"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="h-3.5 w-3.5 text-dim transition-transform hs-accordion-active:rotate-90"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Settings
+        </button>
+        <div className="hs-accordion-content flex flex-wrap items-center gap-4 border-t border-border px-3 py-2.5" style={{ display: "none" }}>
+          <label className="flex items-center gap-1.5 text-[13px]">
+            <span className="text-dim">Module:</span>
+            <select className={select} value={module} onChange={(e) => setModule(e.target.value)}>
+              <option value="">All</option>
+              {modules.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            {[...new Set(graph.edges.map((e) => e.type))].sort().map((t) => (
+              <label key={t} className="flex cursor-pointer items-center gap-1.5 text-xs select-none">
+                <input type="checkbox" className={checkbox} checked={edgeTypes.has(t)} onChange={() => toggleEdgeType(t)} />
+                {t}
+              </label>
             ))}
-          </select>
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
-          {[...new Set(graph.edges.map((e) => e.type))].sort().map((t) => (
-            <label key={t} className="flex items-center gap-1 text-xs">
-              <input type="checkbox" checked={edgeTypes.has(t)} onChange={() => toggleEdgeType(t)} />
-              {t}
-            </label>
-          ))}
-        </div>
-        <label className="flex items-center gap-1.5 text-[13px]">
-          <span className="text-dim">Expand:</span>
-          <select className="field" value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
-            <option value={1}>1 hop</option>
-            <option value={2}>2 hops</option>
-            <option value={3}>3 hops</option>
-          </select>
-        </label>
-        <div className="ml-auto flex items-center gap-1">
-          <button className="btn btn-small" onClick={zoomIn} title="Zoom in">+</button>
-          <button className="btn btn-small" onClick={zoomOut} title="Zoom out">−</button>
-          <button className="btn btn-small" onClick={resetView} title="Reset view">Reset</button>
+          </div>
+          <label className="flex items-center gap-1.5 text-[13px]">
+            <span className="text-dim">Expand:</span>
+            <select className={select} value={expandDepth} onChange={(e) => setExpandDepth(Number(e.target.value))}>
+              <option value={1}>1 hop</option>
+              <option value={2}>2 hops</option>
+              <option value={3}>3 hops</option>
+            </select>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] select-none">
+            <span className="relative inline-flex">
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={showMethods}
+                onChange={(e) => setShowMethods(e.target.checked)}
+              />
+              <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
+              <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
+            </span>
+            <span className="text-dim">Show method nodes</span>
+          </label>
         </div>
       </div>
 
@@ -273,7 +326,7 @@ export default function GraphView({
 
         {hover && (
           <div
-            className="pointer-events-none absolute z-10 max-w-[320px] rounded-md border border-border bg-inset px-3 py-2 text-xs shadow-lg"
+            className="pointer-events-none absolute z-10 max-w-[320px] rounded-lg border border-border bg-inset px-3 py-2 text-xs shadow-lg"
             style={{
               left: Math.min(hover.x + 12, (wrapRef.current?.clientWidth ?? 600) - 200),
               top: Math.max(hover.y - 40, 8),
@@ -285,7 +338,7 @@ export default function GraphView({
           </div>
         )}
 
-        <div className="absolute left-3 top-3 rounded-md border border-border bg-panel/90 px-3 py-2 text-[11px]">
+        <div className="absolute left-3 top-3 rounded-lg border border-border bg-panel/90 px-3 py-2 text-[11px]">
           <div className="mb-1 font-semibold text-dim">Kinds</div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
             {kinds.map((k) => (
@@ -295,6 +348,35 @@ export default function GraphView({
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-lg border border-border bg-panel/90 p-0.5">
+          <button
+            type="button"
+            onClick={zoomOut}
+            title="Zoom out"
+            aria-label="Zoom out"
+            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-dim transition-colors hover:bg-inset hover:text-fg"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={zoomIn}
+            title="Zoom in"
+            aria-label="Zoom in"
+            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-dim transition-colors hover:bg-inset hover:text-fg"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            title="Reset view"
+            className="inline-flex h-6 cursor-pointer items-center justify-center rounded-md px-2 text-xs text-dim transition-colors hover:bg-inset hover:text-fg"
+          >
+            Reset
+          </button>
         </div>
 
         <div className="border-t border-border bg-inset px-2.5 py-1.5 text-xs text-dim">

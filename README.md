@@ -1,27 +1,27 @@
 # Tessera
 
-Reverse engineering de sistemas legados. Conecta um repositório Git e gera um **knowledge graph versionado** da arquitetura — nodes de conhecimento Markdown, amarrados por um **Merkle DAG** para processamento incremental e consultas confiáveis.
+Reverse engineering for legacy systems. Connect a Git repository and generate a **versioned knowledge graph** of its architecture — Markdown knowledge nodes, linked by a **Merkle DAG** for incremental processing and reliable queries.
 
-## Ideia central
+## Core idea
 
 ```
-GitHub (push) → Worker → clone → tree-sitter (AST estático, custo zero)
+GitHub (push) → Worker → clone → tree-sitter (static AST, zero cost)
                                  ↓
-                 só nodes cujo structuralHash mudou → IA semântica
+                 only nodes whose structuralHash changed → semantic AI
                                  ↓
                  markdown knowledge nodes + semanticHash
                                  ↓
-                 Merkle DAG → snapshot por commit (content-addressed)
+                 Merkle DAG → snapshot per commit (content-addressed)
                                  ↓
-                 query layer: "o que quebra se eu mudar X?", diff, chat
+                 query layer: "what breaks if I change X?", diff, chat
 ```
 
-- **Híbrido**: AST é ground truth (confidence ~1.0). IA só resume e infere semântica — nunca decide estrutura.
-- **Dois hashes por node**: `structuralHash` (AST normalizado, muda em mudança estrutural) e `semanticHash` (conteúdo + hashes dos filhos, propaga em cascata).
-- **Incremental**: mudou 5 arquivos → IA processa 5 nodes, não o monólito.
-- **Time-travel**: snapshot imutável por commit; consultas com versão.
+- **Hybrid**: the AST is the ground truth (confidence ~1.0). AI only summarizes and infers semantics — it never decides structure.
+- **Two hashes per node**: `structuralHash` (normalized AST, changes on structural changes) and `semanticHash` (content + child hashes, propagates in cascade).
+- **Incremental**: 5 files changed → AI processes 5 nodes, not the monolith.
+- **Time-travel**: immutable snapshot per commit; queries carry a version.
 
-## Estrutura
+## Structure
 
 ```
 ├── src/
@@ -30,12 +30,13 @@ GitHub (push) → Worker → clone → tree-sitter (AST estático, custo zero)
 │   ├── Tessera.Domain/         # Merkle DAG, knowledge nodes, snapshot composer
 │   ├── Tessera.Infrastructure/ # EF Core, object store, git, parser client
 │   └── Tessera.Shared/
-├── analyzers/                  # sidecar Node.js (web-tree-sitter, 9 gramáticas)
+├── analyzers/                  # Node.js sidecar (web-tree-sitter, 9 grammars)
 ├── tests/
-│   └── Tessera.Domain.Tests/   # testes do Merkle DAG
-├── web/                        # Next.js (dashboard) — WIP
+│   ├── Tessera.Domain.Tests/   # Merkle DAG tests
+│   └── Tessera.Integration.Tests/
+├── web/                        # Next.js dashboard
 ├── docker-compose.yml
-└── openspec/                   # specs da proposta legacy-knowledge-graph
+└── openspec/                   # spec-driven changes (legacy-knowledge-graph proposal)
 ```
 
 ## Stack
@@ -43,9 +44,9 @@ GitHub (push) → Worker → clone → tree-sitter (AST estático, custo zero)
 - Backend: ASP.NET Core (.NET 10), EF Core + PostgreSQL
 - Parse: web-tree-sitter (C#, Java, JS/TS, Python, Go, PHP, Ruby)
 - Object store: filesystem (dev) → S3-compatible (prod)
-- LLM (futuro): DeepSeek/Qwen/GLM via `IChatProvider`
+- LLM: OpenAI-compatible providers (Gemini, DeepSeek/Qwen/GLM) via `IChatProvider`
 
-## Desenvolvimento
+## Development
 
 ```powershell
 docker compose up -d postgres analyzers
@@ -54,33 +55,33 @@ dotnet run --project src/Tessera.Worker
 
 # dashboard
 docker compose up -d web   # http://localhost:3000 (access key: Dashboard__ApiKey)
-cd web; npm run dev        # ou dev mode
+cd web; npm run dev        # or dev mode
 
-# testes
+# tests
 dotnet test
 cd analyzers; npm test
 cd web; npm run typecheck
-./tools/scan-secrets.ps1        # varredura de secrets
-./tools/cost-estimate.ps1       # benchmark de custo LLM (requer API de pé)
+./tools/scan-secrets.ps1        # secrets scan
+./tools/cost-estimate.ps1       # LLM cost benchmark (requires a running API)
 ```
 
-Deploy e configuração (envs, providers LLM, GitHub App, hardening):
+Deployment and configuration (envs, LLM providers, GitHub App, hardening):
 [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Status
 
-- [x] Scaffold .NET + sidecar tree-sitter + Docker Compose
-- [x] Merkle DAG core (hashes, cascata, snapshot composer) + testes
-- [x] Pipeline do Worker (clone → parse → reuso incremental → snapshot)
-- [x] Migration EF Core inicial
-- [x] E2E: clone → sidecar → snapshot + re-análise incremental (teste de integração)
-- [x] Stack Docker de pé (postgres + api + worker + analyzers + web), E2E real com Postgres
-- [x] GitHub App: setup callback + webhook push/installation (assinatura HMAC), testes
-- [x] Providers LLM: OpenAI-compatible (DeepSeek/Qwen/GLM), retry+backoff, fallback, tiering, budget diário
-- [x] Query layer ("o que quebra", diff arquitetural, ciclos, Mermaid) + testes
-- [x] Chat RAG (embeddings + fallback lexical, citações file:line, NoContext) + testes
-- [x] Web dashboard (Next.js): repos, grafo interativo, diff, review queue, chat streaming, auth por API key + login GitHub OAuth (scoping por usuário/instalação)
-- [x] Hardening e QA: CI (dotnet/analyzers/web/scan-secrets), E2E impacto+diff, compose com rootfs read-only + limites, docs de deploy, benchmark de custo LLM
-- [ ] GitHub App real (credenciais)
+- [x] Scaffold .NET + tree-sitter sidecar + Docker Compose
+- [x] Merkle DAG core (hashes, cascade, snapshot composer) + tests
+- [x] Worker pipeline (clone → parse → incremental reuse → snapshot)
+- [x] Initial EF Core migration
+- [x] E2E: clone → sidecar → snapshot + incremental re-analysis (integration test)
+- [x] Full Docker stack (postgres + api + worker + analyzers + web), real E2E with Postgres
+- [x] GitHub App: setup callback + push/installation webhook (HMAC signing), tests
+- [x] LLM providers: OpenAI-compatible (Gemini, DeepSeek/Qwen/GLM), retry+backoff, fallback, tiering, daily budget
+- [x] Query layer ("what breaks", architectural diff, cycles, Mermaid) + tests
+- [x] RAG chat (embeddings + lexical fallback, file:line citations, NoContext) + tests
+- [x] Web dashboard (Next.js): repos, interactive graph, diff, review queue, streaming chat, API-key auth + GitHub OAuth login (per-user/installation scoping)
+- [x] Hardening and QA: CI (dotnet/analyzers/web/scan-secrets), impact+diff E2E, read-only rootfs + limits in compose, deploy docs, LLM cost benchmark
+- [ ] Real GitHub App (credentials)
 
-Detalhes técnicos: `openspec/changes/legacy-knowledge-graph/`.
+Technical details: `openspec/changes/legacy-knowledge-graph/`.

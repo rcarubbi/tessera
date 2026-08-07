@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { badge, card, field } from "@/lib/ui";
 
 export type NodeHit = {
   key: string;
@@ -64,7 +65,7 @@ export default function FilesPanel({
   const groups = useGroups(results ?? []);
 
   return (
-    <div className="card">
+    <div className={card}>
       <div className="mb-4">
         <h2 className="text-lg font-bold">File search</h2>
         <p className="text-sm text-dim">
@@ -75,7 +76,7 @@ export default function FilesPanel({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search files, symbols, paths…"
-        className="field w-full max-w-md"
+        className={`${field} max-w-md`}
         autoFocus
       />
       {error && <div className="mt-3 text-danger">{error}</div>}
@@ -98,7 +99,7 @@ export default function FilesPanel({
                   className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-inset"
                   onClick={() => onSelect(n.key)}
                 >
-                  <span className="badge">{n.kind}</span>
+                  <span className={badge}>{n.kind}</span>
                   <span className="truncate text-fg">{n.symbol}</span>
                   <span className="ml-auto shrink-0 text-xs text-dim">line {n.startLine}</span>
                 </button>

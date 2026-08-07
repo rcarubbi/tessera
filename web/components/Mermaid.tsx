@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DiagramViewer from "./DiagramViewer";
 
 export default function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,5 +44,17 @@ export default function Mermaid({ chart }: { chart: string }) {
     );
   }
 
-  return <div ref={ref} className="my-3 overflow-auto" />;
+  return (
+    <div className="group relative my-3">
+      <div
+        ref={ref}
+        className="cursor-zoom-in overflow-auto rounded-md border border-transparent transition-colors hover:border-border"
+        onClick={() => setOpen(true)}
+      />
+      <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-border bg-panel/90 px-2 py-0.5 text-[10px] text-dim opacity-0 transition-opacity group-hover:opacity-100">
+        Click to expand
+      </div>
+      {open && <DiagramViewer chart={chart} onClose={() => setOpen(false)} />}
+    </div>
+  );
 }

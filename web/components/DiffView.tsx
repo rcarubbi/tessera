@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 import type { Diff, Snapshot } from "@/lib/types";
+import { card, cardError, path, select, spinner } from "@/lib/ui";
 
 export default function DiffView({
   repoId,
@@ -42,7 +43,7 @@ export default function DiffView({
   }, [from, to]);
 
   if (sorted.length === 0) {
-    return <div className="panel muted">No snapshots to compare.</div>;
+    return <div className={card}>No snapshots to compare.</div>;
   }
 
   const added = diff?.nodes.filter((n) => n.change === "added") ?? [];
@@ -51,39 +52,47 @@ export default function DiffView({
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="muted">From:</span>
-          <select value={from} onChange={(e) => setFrom(e.target.value)}>
+      <div className={`${card} mb-3 flex flex-wrap items-center gap-3`}>
+        <label className="flex items-center gap-1.5 text-sm">
+          <span className="text-dim">From:</span>
+          <select className={select} value={from} onChange={(e) => setFrom(e.target.value)}>
             {sorted.map((s) => (
               <option key={s.id} value={s.commitSha}>{s.commitSha.slice(0, 10)}</option>
             ))}
           </select>
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="muted">To:</span>
-          <select value={to} onChange={(e) => setTo(e.target.value)}>
+        <label className="flex items-center gap-1.5 text-sm">
+          <span className="text-dim">To:</span>
+          <select className={select} value={to} onChange={(e) => setTo(e.target.value)}>
             {sorted.map((s) => (
               <option key={s.id} value={s.commitSha}>{s.commitSha.slice(0, 10)}</option>
             ))}
           </select>
         </label>
-        {loading && <span className="spinner" />}
+        {loading && <span className={spinner} />}
       </div>
 
-      {error && <div className="panel mb-3 text-danger">{error}</div>}
+      {error && <div className={`${card} ${cardError} mb-3 text-danger`}>{error}</div>}
 
       {diff && (
         <>
           {(diff.cycles?.length ?? 0) > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div className="muted" style={{ fontWeight: 600, marginBottom: 6 }}>New dependency cycles ({diff.cycles!.length})</div>
+            <div className="mb-3">
+              <div className="mb-1.5 font-semibold text-dim">
+                New dependency cycles ({diff.cycles!.length})
+              </div>
               {diff.cycles!.map((c, i) => (
-                <div key={i} className="cycle-banner" style={{ marginBottom: 6 }}>
+                <div key={i} className="mb-1.5 flex flex-wrap items-center gap-1 rounded-lg border border-danger bg-danger/10 px-3 py-2 font-mono text-sm text-danger">
                   {c.path.map((k, j) => (
-                    <span key={k}>
-                      <button className="btn small" style={{ background: "transparent" }} onClick={() => onSelect(k)}>{k}</button>
-                      {j < c.path.length - 1 && " → "}
+                    <span key={k} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="cursor-pointer font-medium text-danger hover:underline"
+                        onClick={() => onSelect(k)}
+                      >
+                        {k}
+                      </button>
+                      {j < c.path.length - 1 && <span className="text-danger/60">→</span>}
                     </span>
                   ))}
                 </div>
@@ -91,29 +100,28 @@ export default function DiffView({
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div className="panel">
-              <div className="diff-added" style={{ fontWeight: 600 }}>Added ({added.length})</div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className={card}>
+              <div className="mb-2 font-semibold text-good">Added ({added.length})</div>
               <ChangeList items={added} onSelect={onSelect} tone="added" />
             </div>
-            <div className="panel">
-              <div className="diff-removed" style={{ fontWeight: 600 }}>Removed ({removed.length})</div>
+            <div className={card}>
+              <div className="mb-2 font-semibold text-danger">Removed ({removed.length})</div>
               <ChangeList items={removed} onSelect={onSelect} tone="removed" />
             </div>
-            <div className="panel">
-              <div className="diff-changed" style={{ fontWeight: 600 }}>Changed ({changed.length})</div>
+            <div className={card}>
+              <div className="mb-2 font-semibold text-warn">Changed ({changed.length})</div>
               <ChangeList items={changed} onSelect={onSelect} tone="changed" />
             </div>
-            <div className="panel">
-              <div style={{ fontWeight: 600 }} className="muted">Edges ({diff.edges.length})</div>
-              <ul className="list" style={{ marginTop: 6 }}>
+            <div className={card}>
+              <div className="mb-2 font-semibold text-dim">Edges ({diff.edges.length})</div>
+              <ul className="space-y-0.5">
                 {diff.edges.map((e, i) => (
-                  <li key={i} style={{ cursor: "default" }}>
-                    <span className={e.change === "added" ? "diff-added" : "diff-removed"}>
+                  <li key={i} className="text-sm">
+                    <span className={e.change === "added" ? "text-good" : "text-danger"}>
                       {e.change === "added" ? "+" : "−"} {e.from} → {e.to}
                     </span>{" "}
-                    <span className="muted">({e.type})</span>
-                  </li>
+                    <span className="text-dim">({e.type})</span>                  </li>
                 ))}
               </ul>
             </div>
@@ -125,12 +133,19 @@ export default function DiffView({
 }
 
 function ChangeList({ items, onSelect, tone }: { items: { key: string; symbol: string }[]; onSelect: (k: string) => void; tone: string }) {
-  if (items.length === 0) return <div className="muted">none</div>;
+  if (items.length === 0) return <div className="text-dim">none</div>;
   return (
-    <ul className="list" style={{ marginTop: 6 }}>
+    <ul className="space-y-0.5">
       {items.map((n) => (
-        <li key={`${tone}-${n.key}`} onClick={() => onSelect(n.key)}>
-          <span className={`diff-${tone}`}>{n.symbol}</span> <span className="path">{n.key}</span>
+        <li key={`${tone}-${n.key}`} className="text-sm">
+          <button
+            type="button"
+            className={`cursor-pointer hover:underline ${tone === "added" ? "text-good" : tone === "removed" ? "text-danger" : "text-warn"}`}
+            onClick={() => onSelect(n.key)}
+          >
+            {n.symbol}
+          </button>{" "}
+          <span className={path}>{n.key}</span>
         </li>
       ))}
     </ul>

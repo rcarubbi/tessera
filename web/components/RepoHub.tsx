@@ -14,6 +14,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ReprocessButton from "@/components/ReprocessButton";
 import { TopBar } from "@/components/TopBar";
 import { apiGet } from "@/lib/api";
+import { card, cardError } from "@/lib/ui";
 import type { Repository, Snapshot } from "@/lib/types";
 
 type Tab = "overview" | "files" | "graph" | "diff" | "review" | "chat";
@@ -55,7 +56,7 @@ export default function RepoHub({ repoId }: { repoId: string }) {
         <TopBar />
         <main className="app-main">
           <div className="mx-auto max-w-[1400px] px-5 py-5">
-            <div className="card card-error text-danger">{error}</div>
+            <div className={`${card} ${cardError} text-danger`}>{error}</div>
           </div>
         </main>
       </div>
@@ -104,19 +105,24 @@ export default function RepoHub({ repoId }: { repoId: string }) {
             </div>
           </div>
 
-          <div className="mb-4 flex gap-1 rounded-lg border border-border bg-panel p-1">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`flex-1 cursor-pointer rounded-md border-0 px-3 py-2 text-sm font-medium transition-colors ${
-                  tab === t.id ? "bg-inset text-fg shadow-sm" : "text-dim hover:text-fg"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="hs-tabs mb-4">
+            <div className="flex gap-1 rounded-lg border border-border bg-panel p-1">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-hs-tab={`#tab-${t.id}`}
+                  onClick={() => setTab(t.id)}
+                  className={`flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    tab === t.id
+                      ? "active hs-tab-active:bg-inset hs-tab-active:text-fg"
+                      : "text-dim hover:text-fg"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-stretch gap-4">

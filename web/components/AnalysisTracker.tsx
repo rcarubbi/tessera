@@ -9,6 +9,7 @@ import ReprocessButton from "@/components/ReprocessButton";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import type { Repository } from "@/lib/types";
+import { btn, btnDanger, btnSmall, card, cardError, spinner, statCard, statLabel, statValue } from "@/lib/ui";
 
 const STAGES = [
   { status: 0, label: "Pending" },
@@ -114,31 +115,31 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
             </div>
           </div>
 
-          {error && <div className="card card-error mb-4 text-danger">{error}</div>}
+          {error && <div className={`${card} ${cardError} mb-4 text-danger`}>{error}</div>}
           {!repo && !error && <div className="text-dim">Loading analysis progress…</div>}
 
           {repo && (
             <>
-              <div className="card mb-4 flex flex-col gap-4">
+              <div className={`${card} mb-4 flex flex-col gap-4`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">Pipeline stages</div>
                   <div className="flex items-center gap-2">
                     {inProgress && (
                       <button
                         type="button"
-                        className="btn btn-small btn-danger"
+                        className={`${btn} ${btnSmall} ${btnDanger}`}
                         onClick={cancel}
                         disabled={cancelling || repo?.cancelRequested}
                         title={repo?.cancelRequested ? "Cancellation requested — waiting for the worker to stop" : "Stop this analysis"}
                       >
-                        {cancelling || repo?.cancelRequested ? <span className="spinner" /> : null}
+                        {cancelling || repo?.cancelRequested ? <span className={spinner} /> : null}
                         {cancelling || repo?.cancelRequested ? "Cancelling…" : "Cancel"}
                       </button>
                     )}
-                    <button type="button" className="btn btn-small" onClick={() => setPaused((p) => !p)}>
+                    <button type="button" className={`${btn} ${btnSmall}`} onClick={() => setPaused((p) => !p)}>
                       {paused ? "Resume auto-refresh" : "Pause auto-refresh"}
                     </button>
-                    <button type="button" className="btn btn-small" onClick={load}>
+                    <button type="button" className={`${btn} ${btnSmall}`} onClick={load}>
                       Refresh
                     </button>
                   </div>
@@ -207,7 +208,7 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
                         </span>
                       ) : (
                         <>
-                          <span className="spinner" />
+                          <span className={spinner} />
                           Working on <strong className="text-fg">{STAGES[repo.status]?.label}</strong>
                         </>
                       )}
@@ -217,28 +218,28 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
               </div>
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                <div className="card flex flex-col gap-1">
-                  <span className="stat-value">{fmtDuration(elapsedMs)}</span>
-                  <span className="stat-label">
+                <div className={statCard}>
+                  <span className={statValue}>{fmtDuration(elapsedMs)}</span>
+                  <span className={statLabel}>
                     {stageStartedAt && !isNaN(stageStartedAt.getTime())
                       ? `Current stage time (since ${stageStartedAt.toLocaleTimeString()})`
                       : "Current stage time"}
                   </span>
                 </div>
-                <div className="card flex flex-col gap-1">
-                  <span className="stat-value">
+                <div className={statCard}>
+                  <span className={statValue}>
                     {repo.nodeCount} / {repo.edgeCount}
                   </span>
-                  <span className="stat-label">Nodes / edges in last snapshot</span>
+                  <span className={statLabel}>Nodes / edges in last snapshot</span>
                 </div>
-                <div className="card flex flex-col gap-1">
-                  <span className="stat-value">{repo.lastProcessedCommit ? short(repo.lastProcessedCommit) : "—"}</span>
-                  <span className="stat-label">Last processed commit</span>
+                <div className={statCard}>
+                  <span className={statValue}>{repo.lastProcessedCommit ? short(repo.lastProcessedCommit) : "—"}</span>
+                  <span className={statLabel}>Last processed commit</span>
                 </div>
               </div>
 
               {repo.status === 6 && (
-                <div className="card card-error mt-4 flex flex-col gap-3">
+                <div className={`${card} ${cardError} mt-4 flex flex-col gap-3`}>
                   <div className="text-sm font-medium text-danger">Analysis failed</div>
                   {repo.errorMessage && (
                     <pre className="max-h-48 overflow-auto rounded-md bg-inset p-3 text-xs text-dim whitespace-pre-wrap">

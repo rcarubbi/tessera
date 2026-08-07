@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Markdown from "@/components/Markdown";
 import { getChatMessages, postChatMessage, streamChat, type ChatStreamEvent, type Citation } from "@/lib/api";
+import { badge, badgeGreen, badgePurple, badgeRed, badgeYellow, btn, btnDanger, btnPrimary, card, field, spinner } from "@/lib/ui";
 
 type Turn = {
   question: string;
@@ -125,33 +126,33 @@ export default function ChatPanel({
   const stop = () => abortRef.current?.abort();
 
   return (
-    <div className="panel" style={{ display: "flex", flexDirection: "column", minHeight: 560, maxHeight: "calc(100vh - 240px)" }}>
-      <div style={{ flex: 1, overflow: "auto", paddingRight: 4 }}>
+    <div className={`${card} flex flex-col`} style={{ minHeight: 560, maxHeight: "calc(100vh - 240px)" }}>
+      <div className="flex-1 overflow-auto pr-1">
         {turns.length === 0 && (
-          <div className="muted" style={{ marginTop: 20, textAlign: "center" }}>
+          <div className="mt-5 text-center text-dim">
             Ask anything about the architecture. Try{" "}
             <em>&quot;what breaks if I change Order?&quot;</em>
           </div>
         )}
         {turns.map((t, i) => (
-          <div key={i} style={{ marginBottom: 18 }}>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <div className="rounded-[10px_10px_2px_10px] border border-border bg-inset px-3 py-2" style={{ maxWidth: "85%" }}>
-                  {t.question}
-                </div>
+          <div key={i} className="mb-4">
+            <div className="flex justify-end">
+              <div className="rounded-[10px_10px_2px_10px] border border-border bg-inset px-3 py-2 text-sm" style={{ maxWidth: "85%" }}>
+                {t.question}
               </div>
-              <div className="mt-2 rounded-[0_10px_10px_10px] border border-border bg-bg px-3.5 py-3">
-                {t.mode && (
-                  <div style={{ marginBottom: 8, display: "flex", gap: 6, alignItems: "center" }}>
-                    <span className={`badge ${t.mode === "NoContext" ? "badge-red" : t.mode === "Graph" ? "badge-green" : "badge-purple"}`}>
-                      {t.mode}
-                    </span>
-                    {streaming && i === turns.length - 1 && <span className="spinner" />}
-                  </div>
-                )}
+            </div>
+            <div className="mt-2 rounded-[0_10px_10px_10px] border border-border bg-bg px-3.5 py-3">
+              {t.mode && (
+                <div className="mb-2 flex items-center gap-1.5">
+                  <span className={`${badge} ${t.mode === "NoContext" ? badgeRed : t.mode === "Graph" ? badgeGreen : badgePurple}`}>
+                    {t.mode}
+                  </span>
+                  {streaming && i === turns.length - 1 && <span className={spinner} />}
+                </div>
+              )}
               <div className="markdown">
                 {t.answer === "" && streaming && i === turns.length - 1 ? (
-                  <span className="muted">thinking…</span>
+                  <span className="text-dim">thinking…</span>
                 ) : (
                   <Markdown>{t.answer}</Markdown>
                 )}
@@ -163,19 +164,24 @@ export default function ChatPanel({
                 </div>
               )}
               {t.citations.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Citations</div>
+                <div className="mt-2.5">
+                  <div className="mb-1 text-xs text-dim">Citations</div>
                   {t.citations.map((c) => (
-                    <button key={`${c.key}-${c.line}`} className="citation-chip" onClick={() => onSelect(c.key)} title={c.key}>
+                    <button
+                      key={`${c.key}-${c.line}`}
+                      className="mr-1 mb-1 inline-block cursor-pointer rounded-full border border-border bg-inset px-2 py-0.5 font-mono text-xs text-accent hover:border-accent"
+                      onClick={() => onSelect(c.key)}
+                      title={c.key}
+                    >
                       {c.label}
                     </button>
                   ))}
                 </div>
               )}
               {t.warnings.length > 0 && (
-                <div style={{ marginTop: 10 }}>
+                <div className="mt-2.5">
                   {t.warnings.map((w, j) => (
-                    <div key={j} className="badge badge-yellow" style={{ margin: 2 }}>{w}</div>
+                    <span key={j} className={`${badge} ${badgeYellow} mr-1 mb-1`}>{w}</span>
                   ))}
                 </div>
               )}
@@ -186,18 +192,18 @@ export default function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={submit} style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <form onSubmit={submit} className="mt-3 flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={streaming ? "Streaming…" : "Ask about the architecture…"}
-          style={{ flex: 1 }}
+          className={`${field} flex-1`}
           disabled={streaming}
         />
         {streaming ? (
-          <button type="button" className="btn btn-danger" onClick={stop}>Stop</button>
+          <button type="button" className={`${btn} ${btnDanger}`} onClick={stop}>Stop</button>
         ) : (
-          <button type="submit" className="btn btn-primary" disabled={!input.trim()}>Ask</button>
+          <button type="submit" className={`${btn} ${btnPrimary}`} disabled={!input.trim()}>Ask</button>
         )}
       </form>
     </div>
