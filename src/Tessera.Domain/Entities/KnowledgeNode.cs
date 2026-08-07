@@ -20,6 +20,8 @@ public class KnowledgeNode
     public string? ParentSemanticHash { get; set; }
 
     public string Content { get; set; } = "";
+    public string? ClassDiagram { get; set; }
+    public string? SequenceDiagram { get; set; }
     public double Confidence { get; set; } = 1.0;
     public ReviewStatus ReviewStatus { get; set; } = ReviewStatus.None;
 

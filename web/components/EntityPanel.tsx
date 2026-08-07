@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Mermaid from "@/components/Mermaid";
+import Markdown from "@/components/Markdown";
 import { apiGet } from "@/lib/api";
 import type { Chain, Consumers, Graph, GraphNode } from "@/lib/types";
 
@@ -77,7 +77,23 @@ export default function EntityPanel({
           </div>
           {node.content && (
             <div className="markdown mt-3 border-t border-border pt-3">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{node.content}</ReactMarkdown>
+              <Markdown>{node.content}</Markdown>
+            </div>
+          )}
+          {node.sequenceDiagram && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="muted" style={{ fontWeight: 600, marginBottom: 4 }}>
+                Sequence diagram
+              </div>
+              <Mermaid chart={node.sequenceDiagram} />
+            </div>
+          )}
+          {node.classDiagram && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="muted" style={{ fontWeight: 600, marginBottom: 4 }}>
+                Class diagram
+              </div>
+              <Mermaid chart={node.classDiagram} />
             </div>
           )}
         </div>

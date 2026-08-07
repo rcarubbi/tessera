@@ -34,7 +34,9 @@ public sealed record GraphNodeItem(
     double Confidence,
     string ReviewStatus,
     string SemanticHash,
-    string? Content);
+    string? Content,
+    string? ClassDiagram,
+    string? SequenceDiagram);
 public sealed record GraphEdgeItem(string From, string To, string Type, string? Evidence, double Confidence, bool IsStatic);
 public sealed record GraphResult(string CommitSha, IReadOnlyList<GraphNodeItem> Nodes, IReadOnlyList<GraphEdgeItem> Edges);
 
@@ -262,7 +264,7 @@ public sealed class GraphQueryService(TesseraDbContext db)
             .Select(n => new GraphNodeItem(
                 n.Key, n.Symbol, n.Path, n.Kind.ToString(), n.Language,
                 n.StartLine, n.EndLine, n.Confidence, ReviewStatusLabel.Get(n.ReviewStatus),
-                n.SemanticHash, n.Content))
+                n.SemanticHash, n.Content, n.ClassDiagram, n.SequenceDiagram))
             .ToList();
 
         var edgeItems = edges

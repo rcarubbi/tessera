@@ -63,6 +63,7 @@ public sealed class ParserSidecarClient : IParserSidecarClient
                 Language = e.Language,
                 StartLine = e.StartLine,
                 EndLine = e.EndLine,
+                Source = e.Source,
                 StructuralHash = e.StructuralHash
             }).ToList(),
             Relationships = result.Relationships.Select(r => new ParsedRelationship
@@ -94,6 +95,7 @@ public sealed class ParserSidecarClient : IParserSidecarClient
         public string Language { get; set; } = "";
         public int StartLine { get; set; }
         public int EndLine { get; set; }
+        public string? Source { get; set; }
         public string StructuralHash { get; set; } = "";
     }
 

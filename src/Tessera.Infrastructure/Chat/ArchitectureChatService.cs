@@ -61,11 +61,29 @@ public sealed class ArchitectureChatService(
     private const string SystemPrompt =
         """
         You are an expert software architect reverse-engineering legacy systems. Answer the user's
-        question using ONLY the provided knowledge nodes extracted from the repository. When you refer
-        to an entity, reference it by writing its exact KEY token in square brackets, e.g.
-        [Order.cs::Order], and name its source file. Do not invent files, entities, or facts. If the
-        provided nodes are insufficient, say so clearly. Be concise. Answer in the user's language.
+        question using ONLY the provided knowledge nodes extracted from the repository. CRITICALLY
+        evaluate and synthesize across all provided nodes rather than merely restating the content of
+        a single node. When you refer to an entity, reference it by writing its exact KEY token in
+        square brackets, e.g. [Order.cs::Order], and name its source file. Do not invent files,
+        entities, or facts. If the provided nodes are insufficient, say so clearly. Be concise.
+        Answer in the user's language.
         """;
+
+    private const string ReviewSystemPrompt =
+        """
+        You are a senior code reviewer auditing an automated analysis of a legacy system. The user
+        asks whether the project has bugs, defects, failures, risks or security issues. CRITICALLY
+        evaluate the knowledge nodes: read each node's responsibilities, error handling, state
+        management and known issues, cross-reference its dependencies and consumers, and synthesize
+        the real problems or risks you can identify. Cite entities with their exact KEY token in
+        square brackets and name their source file. Do not invent issues; if the analysis is too
+        shallow to conclude, say so and point to the entities that deserve a deep dive. Answer in
+        the user's language. Be concise.
+        """;
+
+    private static readonly Regex ReviewIntent = new(
+        @"(?i)(bug|defeito|defect|falha|failure|fault|erro|error|risco|risk|seguranca|segurança|security|vulnerabil|problema|problem|audit|code review|code-review|revis)",
+        RegexOptions.Compiled);
 
     private static readonly Regex StructuralIntent = new(
         @"(?i)(impact|break|breaks|breaking|what happens|o que (quebra|acontece)|quem (usa|chama|consome)|who (uses|calls|consumes)|depend|used by|usado por|affected|afet|referenc|consumer|consumidor|dependenc)",
@@ -109,6 +127,11 @@ public sealed class ArchitectureChatService(
                 : throw new SnapshotNotFoundException(repositoryId, commitSha);
         }
 
+        if (ReviewIntent.IsMatch(question))
+        {
+            return await AnswerFromAnalysisAsync(repositoryId, commitSha, question, repo.GitHubId, ct);
+        }
+
         if (StructuralIntent.IsMatch(question))
         {
             var nodes = await db.KnowledgeNodes.AsNoTracking()
@@ -147,6 +170,16 @@ public sealed class ArchitectureChatService(
                 throw new SnapshotNotFoundException(repositoryId, commitSha);
             }
             await foreach (var item in StreamResultAsync(NoContextResult(), ct))
+            {
+                yield return item;
+            }
+            yield break;
+        }
+
+        if (ReviewIntent.IsMatch(question))
+        {
+            var reviewResult = await AnswerFromAnalysisAsync(repositoryId, commitSha, question, repo.GitHubId, ct);
+            await foreach (var item in StreamResultAsync(reviewResult, ct))
             {
                 yield return item;
             }
@@ -403,6 +436,77 @@ public sealed class ArchitectureChatService(
         return new ChatResult(ChatMode.Graph, sb.ToString().TrimEnd(), citations, Array.Empty<string>());
     }
 
+    private async Task<ChatResult> AnswerFromAnalysisAsync(
+        Guid repositoryId,
+        string? commitSha,
+        string question,
+        long gitHubId,
+        CancellationToken ct)
+    {
+        var snapshot = await ResolveSnapshotAsync(repositoryId, commitSha, ct);
+        if (snapshot is null)
+        {
+            return NoContextResult();
+        }
+
+        var topK = Math.Max(12, _options.TopK * 2);
+        var threshold = Math.Min(0.35, _options.SimilarityThreshold);
+        var retrieved = await retrieval.RetrieveAsync(repositoryId, commitSha, question, topK, threshold, ct);
+
+        if (retrieved.Count == 0)
+        {
+            var overview = await TryGetOverviewAsync(snapshot.Id, ct);
+            if (overview is not null)
+            {
+                var answer = await AnswerFromOverviewAsync(question, overview.Content, ct);
+                return new ChatResult(ChatMode.Rag, answer, Array.Empty<ChatCitation>(), Array.Empty<string>());
+            }
+            return NoContextResult();
+        }
+
+        var provider = providers.Primary;
+        if (provider is null)
+        {
+            return SynthesizeFromNodes(retrieved);
+        }
+
+        var prompt = BuildReviewPrompt(question, retrieved);
+        var promptTokens = EstimateTokens(prompt) + 400;
+        if (!budget.TryAllocate(gitHubId, promptTokens, DateTimeOffset.UtcNow))
+        {
+            return SynthesizeFromNodes(retrieved);
+        }
+
+        var messages = new[] { new ChatMessage("system", ReviewSystemPrompt), new ChatMessage("user", prompt) };
+        try
+        {
+            var answer = await RetryPolicy.WithRetryAsync(ct2 => provider.CompleteAsync(messages, ct2), _options.MaxRetries, ct: ct);
+            if (!string.IsNullOrWhiteSpace(answer))
+            {
+                return BuildRagResult(answer, retrieved);
+            }
+        }
+        catch (Exception) when (providers.Fallback is not null)
+        {
+            try
+            {
+                var answer = await providers.Fallback.CompleteAsync(messages, ct);
+                if (!string.IsNullOrWhiteSpace(answer))
+                {
+                    return BuildRagResult(answer, retrieved);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        return SynthesizeFromNodes(retrieved);
+    }
+
     private async Task<ChatResult> AnswerFromRagAsync(
         Guid repositoryId,
         string? commitSha,
@@ -538,6 +642,27 @@ public sealed class ArchitectureChatService(
             if (content.Length > 1600)
             {
                 content = content[..1600] + "... [truncated]";
+            }
+            sb.AppendLine(content);
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildReviewPrompt(string question, IReadOnlyList<RetrievedNode> retrieved)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"User question: {question}");
+        sb.AppendLine();
+        sb.AppendLine("Knowledge nodes extracted from the repository. CRITICALLY evaluate them rather than restating them:");
+        foreach (var node in retrieved.Select(r => r.Node))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"--- [{node.Key}]");
+            sb.AppendLine($"Source: {node.Path} lines {node.StartLine}-{node.EndLine} | confidence {node.Confidence:F2} | review: {ReviewLabel(node.ReviewStatus)}");
+            var content = node.Content;
+            if (content.Length > 2400)
+            {
+                content = content[..2400] + "... [truncated]";
             }
             sb.AppendLine(content);
         }

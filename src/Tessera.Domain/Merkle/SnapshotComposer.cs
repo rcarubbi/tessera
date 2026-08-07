@@ -8,6 +8,8 @@ namespace Tessera.Domain.Merkle;
 public sealed class AiContent
 {
     public required string Content { get; init; }
+    public string? ClassDiagram { get; init; }
+    public string? SequenceDiagram { get; init; }
     public double Confidence { get; init; } = 1.0;
     public string Model { get; init; } = "";
     public string PromptVersion { get; init; } = "";
@@ -61,6 +63,8 @@ public static class SnapshotComposer
                     EndLine = entity.EndLine,
                     StructuralHash = entity.StructuralHash,
                     Content = previous.Content,
+                    ClassDiagram = previous.ClassDiagram,
+                    SequenceDiagram = previous.SequenceDiagram,
                     Confidence = previous.Confidence,
                     ReviewStatus = previous.ReviewStatus,
                     CommitSha = commitSha,
@@ -85,6 +89,8 @@ public static class SnapshotComposer
                     EndLine = entity.EndLine,
                     StructuralHash = entity.StructuralHash,
                     Content = generated?.Content ?? PendingContent,
+                    ClassDiagram = generated?.ClassDiagram,
+                    SequenceDiagram = generated?.SequenceDiagram,
                     Confidence = generated?.Confidence ?? 0.0,
                     CommitSha = commitSha,
                     Model = generated?.Model,

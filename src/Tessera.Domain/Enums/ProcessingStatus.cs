@@ -8,5 +8,6 @@ public enum ProcessingStatus
     Analyzing,
     Indexing,
     Completed,
-    Failed
+    Failed,
+    Cancelled
 }

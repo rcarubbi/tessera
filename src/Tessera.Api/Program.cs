@@ -119,6 +119,16 @@ app.MapGet("/api/repositories", async (HttpContext context, TesseraDbContext db)
     return Results.Ok(await query.OrderByDescending(r => r.UpdatedAt).ToListAsync());
 });
 
+app.MapGet("/api/repositories/{id:guid}", async (Guid id, HttpContext context, TesseraDbContext db) =>
+{
+    var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
+    if (guarded is not null) return guarded;
+    var repo = await db.Repositories.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id);
+    return repo is null
+        ? Results.NotFound(new { error = "Repository not found" })
+        : Results.Ok(repo);
+});
+
 app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, HttpContext context, TesseraDbContext db) =>
 {
     var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
@@ -141,7 +151,45 @@ app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, HttpContext
     }
 
     repo.Status = ProcessingStatus.Pending;
+    repo.CancelRequested = false;
     repo.LastProcessedCommit = null;
+    repo.StageStartedAt = null;
+    repo.ProcessedCount = 0;
+    repo.TotalCount = 0;
+    repo.ErrorMessage = null;
+    repo.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(repo);
+});
+
+app.MapPost("/api/repositories/{id:guid}/cancel", async (Guid id, HttpContext context, TesseraDbContext db) =>
+{
+    var guarded = await context.GuardRepoAsync(db, id, context.RequestAborted);
+    if (guarded is not null) return guarded;
+
+    var repo = await db.Repositories.FirstOrDefaultAsync(r => r.Id == id);
+    if (repo is null)
+    {
+        return Results.NotFound(new { error = "Repository not found" });
+    }
+
+    if (repo.Status is ProcessingStatus.Completed
+        or ProcessingStatus.Failed or ProcessingStatus.Cancelled)
+    {
+        return Results.BadRequest(new { error = $"Cannot cancel a repository in state {repo.Status}" });
+    }
+
+    if (repo.Status == ProcessingStatus.Pending)
+    {
+        repo.Status = ProcessingStatus.Cancelled;
+        repo.CancelRequested = false;
+        repo.StageStartedAt = null;
+        repo.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        return Results.Ok(repo);
+    }
+
+    repo.CancelRequested = true;
     repo.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(repo);

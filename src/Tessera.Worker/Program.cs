@@ -19,6 +19,7 @@ builder.Services.AddSingleton<ISemanticSummarizer, AiSummarizer>();
 builder.Services.AddSingleton<IGitClient, GitClient>();
 builder.Services.AddScoped<IParserSidecarClient, ParserSidecarClient>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
+builder.Services.AddScoped<IArchitectureLinkingService, ArchitectureLinkingService>();
 builder.Services.AddScoped<AnalysisPipeline>();
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection("GitHub"));
 builder.Services.AddSingleton<IGitHubAppClient>(sp =>

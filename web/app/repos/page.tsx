@@ -137,9 +137,14 @@ export default function ReposPage() {
                   </div>
                   <div className="text-xs text-dim">branch {repo.defaultBranch}</div>
                   <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3">
-                    <Link href={`/repos/${repo.id}`} className="text-xs text-accent hover:underline">
-                      Open graph →
-                    </Link>
+                    <span className="flex items-center gap-3 text-xs">
+                      <Link href={`/repos/${repo.id}`} className="text-accent hover:underline">
+                        Open graph →
+                      </Link>
+                      <Link href={`/repos/${repo.id}/progress`} className="text-accent hover:underline">
+                        Track progress →
+                      </Link>
+                    </span>
                     <ReprocessButton repoId={repo.id} fullName={repo.fullName} onReprocessed={load} />
                   </div>
                 </div>

@@ -1,6 +1,15 @@
 "use client";
 
-const STATUS_LABELS = ["Pending", "Cloning", "Parsing", "Analyzing", "Indexing", "Completed", "Failed"];
+const STATUS_LABELS = [
+  "Pending",
+  "Cloning",
+  "Parsing",
+  "Analyzing",
+  "Indexing",
+  "Completed",
+  "Failed",
+  "Cancelled",
+];
 
 const TONES: Record<string, string> = {
   Pending: "badge",
@@ -10,6 +19,7 @@ const TONES: Record<string, string> = {
   Indexing: "badge-yellow",
   Completed: "badge-green",
   Failed: "badge-red",
+  Cancelled: "badge",
 };
 
 export default function StatusBadge({ status }: { status: number }) {

@@ -98,6 +98,62 @@ public sealed class AiSummarizerTests
         Assert.Equal(0, primary.Calls);
     }
 
+    [Fact]
+    public async Task Extracts_class_diagram_and_strips_diagram_section()
+    {
+        var provider = new FakeChatProvider("deepseek", "deepseek-chat", _ =>
+            "# Order\n\n## Responsibilities\n- X\n\n## Class diagram\n\n```mermaid\nclassDiagram\n    class Order\n```\n\nConfidence: 0.8");
+        var sut = Create(provider, fallback: null);
+
+        var result = await sut.SummarizeAsync(Entity(), relationships: [], repositoryId: 1);
+
+        Assert.Equal("classDiagram\n    class Order", result.ClassDiagram);
+        Assert.Null(result.SequenceDiagram);
+        Assert.DoesNotContain("Class diagram", result.Content);
+        Assert.Contains("## Responsibilities", result.Content);
+        Assert.Equal(0.8, result.Confidence);
+    }
+
+    [Fact]
+    public async Task Extracts_sequence_diagram_for_method_entity()
+    {
+        var method = new ParsedEntity
+        {
+            Key = "Order.cs::Create",
+            Path = "Order.cs",
+            Symbol = "Create",
+            Kind = Tessera.Domain.Enums.NodeKind.Method,
+            Language = "csharp",
+            StartLine = 1,
+            EndLine = 10,
+            StructuralHash = "abc"
+        };
+        var provider = new FakeChatProvider("deepseek", "deepseek-chat", _ =>
+            "## Responsibilities\n- Y\n\n## Sequence diagram\n\n```mermaid\nsequenceDiagram\n    self->>Dep: invoke\n```\n\nConfidence: 0.7");
+        var sut = Create(provider, fallback: null);
+
+        var result = await sut.SummarizeAsync(method, relationships: [], repositoryId: 1);
+
+        Assert.Equal("sequenceDiagram\n    self->>Dep: invoke", result.SequenceDiagram);
+        Assert.Null(result.ClassDiagram);
+        Assert.Equal(0.7, result.Confidence);
+    }
+
+    [Fact]
+    public async Task Rule_based_fallback_emits_diagram_placeholders()
+    {
+        var sut = Create(primary: null, fallback: null);
+
+        var result = await sut.SummarizeAsync(Entity(), relationships: [], repositoryId: 1);
+
+        Assert.Equal("rule-based", result.Model);
+        Assert.NotNull(result.ClassDiagram);
+        Assert.Contains("classDiagram", result.ClassDiagram);
+        Assert.Contains("## Known issues", result.Content);
+        Assert.Contains("## Error handling", result.Content);
+        Assert.Contains("## State management", result.Content);
+    }
+
     private static AiSummarizer Create(
         FakeChatProvider? primary,
         FakeChatProvider? fallback,

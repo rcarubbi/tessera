@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/Markdown";
 import { apiGet } from "@/lib/api";
 
 type Overview = {
@@ -59,7 +58,7 @@ export default function OverviewPanel({ repoId }: { repoId: string }) {
             </span>
           </div>
           <div className="markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{overview.overview}</ReactMarkdown>
+            <Markdown>{overview.overview}</Markdown>
           </div>
         </div>
       )}

@@ -13,6 +13,11 @@ export type Repository = {
   lastSnapshotAt: string | null;
   nodeCount: number;
   edgeCount: number;
+  stageStartedAt: string | null;
+  processedCount: number;
+  totalCount: number;
+  errorMessage: string | null;
+  cancelRequested: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,6 +46,8 @@ export type GraphNode = {
   reviewStatus: string;
   semanticHash: string;
   content?: string | null;
+  classDiagram?: string | null;
+  sequenceDiagram?: string | null;
 };
 
 export type GraphEdge = {

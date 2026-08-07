@@ -30,6 +30,7 @@ public class TesseraDbContext : DbContext
         {
             e.HasIndex(r => r.FullName).IsUnique();
             e.HasIndex(r => r.InstallationId);
+            e.HasIndex(r => new { r.Status, r.UpdatedAt });
         });
 
         modelBuilder.Entity<GitHubInstallation>(e =>
@@ -71,6 +72,8 @@ public class TesseraDbContext : DbContext
             e.HasIndex(n => n.SemanticHash);
             e.HasIndex(n => n.ReviewStatus);
             e.Property(n => n.Content).HasColumnType("text");
+            e.Property(n => n.ClassDiagram).HasColumnType("text");
+            e.Property(n => n.SequenceDiagram).HasColumnType("text");
             e.HasOne(n => n.Repository)
                 .WithMany()
                 .HasForeignKey(n => n.RepositoryId)

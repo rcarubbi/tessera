@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
+using Tessera.Domain.Parsing;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Chat;
@@ -155,6 +156,99 @@ public sealed class EndToEndPipelineTests : IDisposable
             && e.From == "Payment.cs::Payment" && e.To == "Order.cs::Order");
     }
 
+    [Fact]
+    public async Task Pipeline_marks_cancelled_when_cancel_requested_before_start()
+    {
+        using var db = CreateDb();
+
+        var repo = new Repository
+        {
+            Id = Guid.NewGuid(),
+            FullName = "e2e/cancel-early",
+            CloneUrl = _gitRepoRoot,
+            DefaultBranch = "main",
+            Status = ProcessingStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Repositories.Add(repo);
+        await db.SaveChangesAsync();
+
+        repo.CancelRequested = true;
+        await db.SaveChangesAsync();
+
+        var pipeline = CreatePipeline(db);
+        await pipeline.ProcessAsync(repo);
+
+        Assert.Equal(ProcessingStatus.Cancelled, repo.Status);
+        Assert.False(repo.CancelRequested);
+    }
+
+    [Fact]
+    public async Task Pipeline_cancels_mid_processing_when_cancel_requested()
+    {
+        CommitExtraFiles(_gitRepoRoot);
+
+        using var db = CreateDb();
+
+        var repo = new Repository
+        {
+            Id = Guid.NewGuid(),
+            FullName = "e2e/cancel-mid",
+            CloneUrl = _gitRepoRoot,
+            DefaultBranch = "main",
+            Status = ProcessingStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Repositories.Add(repo);
+        await db.SaveChangesAsync();
+
+        var pipeline = CreatePipeline(db);
+        var process = pipeline.ProcessAsync(repo);
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        var cancelSet = false;
+        while (DateTimeOffset.UtcNow < deadline && !process.IsCompleted)
+        {
+            var status = await db.Repositories.AsNoTracking()
+                .Where(r => r.Id == repo.Id)
+                .Select(r => r.Status)
+                .FirstAsync();
+            if (status is not (ProcessingStatus.Pending or ProcessingStatus.Completed or ProcessingStatus.Failed or ProcessingStatus.Cancelled))
+            {
+                repo.CancelRequested = true;
+                await db.SaveChangesAsync();
+                cancelSet = true;
+                break;
+            }
+            await Task.Delay(25);
+        }
+
+        await process;
+
+        Assert.True(cancelSet, "Cancel request was never applied while processing.");
+        Assert.Equal(ProcessingStatus.Cancelled, repo.Status);
+        Assert.False(repo.CancelRequested);
+    }
+
+    private static void CommitExtraFiles(string repoRoot)
+    {
+        for (var i = 0; i < 30; i++)
+        {
+            File.WriteAllText(Path.Combine(repoRoot, $"Extra{i}.cs"), $$"""
+                namespace Sample;
+
+                public class Extra{{i}}
+                {
+                    public int Value => {{i}};
+                }
+                """);
+        }
+        RunGit(repoRoot, "add", ".");
+        RunGit(repoRoot, "commit", "-m", "add extras");
+    }
+
     private AnalysisPipeline CreatePipeline(TesseraDbContext db)
     {
         return new AnalysisPipeline(
@@ -168,6 +262,7 @@ public sealed class EndToEndPipelineTests : IDisposable
             new FileSystemObjectStore(_objectRoot),
             new NoopGitHubAppClient(),
             new NoopOverviewService(),
+            new NoopLinkingService(),
             Options.Create(new AnalysisPipelineOptions { WorkRoot = _workRoot }),
             Options.Create(new AiOptions { ReviewThreshold = 0.7 }),
             Options.Create(new GitHubOptions()));
@@ -178,8 +273,15 @@ public sealed class EndToEndPipelineTests : IDisposable
         public Task<OverviewResult> GenerateAsync(
             Repository repo,
             IReadOnlyList<KnowledgeNode> nodes,
+            IReadOnlyList<GraphEdge>? edges = null,
             CancellationToken ct = default) =>
             Task.FromResult(new OverviewResult("", "none", 0, DateTimeOffset.UtcNow));
+    }
+
+    private sealed class NoopLinkingService : IArchitectureLinkingService
+    {
+        public Task<IReadOnlyList<LinkedEdge>> LinkAsync(ParseResult parse, long repositoryId, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<LinkedEdge>>(Array.Empty<LinkedEdge>());
     }
 
     private TesseraDbContext CreateDb()

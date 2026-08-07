@@ -11,6 +11,7 @@ public sealed class ParsedEntity
     public string Language { get; set; } = "";
     public int StartLine { get; set; }
     public int EndLine { get; set; }
+    public string? Source { get; set; }
     public string StructuralHash { get; set; } = "";
     public string? Signature { get; set; }
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Markdown from "@/components/Markdown";
 import { getChatMessages, postChatMessage, streamChat, type ChatStreamEvent, type Citation } from "@/lib/api";
 
 type Turn = {
@@ -154,7 +153,7 @@ export default function ChatPanel({
                 {t.answer === "" && streaming && i === turns.length - 1 ? (
                   <span className="muted">thinking…</span>
                 ) : (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.answer}</ReactMarkdown>
+                  <Markdown>{t.answer}</Markdown>
                 )}
               </div>
               {t.mode === "NoContext" && (

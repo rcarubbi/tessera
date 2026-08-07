@@ -28,6 +28,7 @@ public sealed class AnalysisPipeline(
     IObjectStore store,
     IGitHubAppClient github,
     IOverviewService overviewService,
+    IArchitectureLinkingService linkingService,
     IOptions<AnalysisPipelineOptions> options,
     IOptions<AiOptions> aiOptions,
     IOptions<GitHubOptions> githubOptions)
@@ -39,11 +40,11 @@ public sealed class AnalysisPipeline(
     {
         var workDir = Path.Combine(_workRoot, repo.FullName);
 
-        repo.Status = ProcessingStatus.Cloning;
-        await db.SaveChangesAsync(ct);
-
         try
         {
+            await EnsureNotCancelledAsync(repo, ct);
+            await SetStageAsync(repo, ProcessingStatus.Cloning, ct);
+
             var defaultBranch = await git.EnsureCloneAsync(await ResolveCloneUrlAsync(repo, ct), workDir, ct);
             var head = await git.ResolveHeadAsync(workDir, defaultBranch, ct);
 
@@ -55,17 +56,28 @@ public sealed class AnalysisPipeline(
                 return;
             }
 
-            repo.Status = ProcessingStatus.Parsing;
-            repo.UpdatedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(ct);
+            await SetStageAsync(repo, ProcessingStatus.Parsing, ct);
 
             var parse = await ParseRepositoryAsync(workDir, repo, head, ct);
 
-            repo.Status = ProcessingStatus.Analyzing;
-            await db.SaveChangesAsync(ct);
+            await SetStageAsync(repo, ProcessingStatus.Analyzing, ct);
 
             var previousNodes = await LoadPreviousNodesAsync(repo, ct);
             var aiContent = await BuildAiContentAsync(parse, previousNodes, repo, ct);
+
+            var linked = await linkingService.LinkAsync(parse, repo.GitHubId, ct);
+            foreach (var edge in linked)
+            {
+                parse.Relationships.Add(new ParsedRelationship
+                {
+                    From = edge.From,
+                    To = edge.To,
+                    Type = edge.Type,
+                    Evidence = edge.Evidence,
+                    Confidence = edge.Confidence,
+                    IsStatic = false
+                });
+            }
 
             var snapshotId = Guid.NewGuid();
             var composed = SnapshotComposer.Compose(
@@ -76,8 +88,7 @@ public sealed class AnalysisPipeline(
                 previousNodes,
                 aiContent);
 
-            repo.Status = ProcessingStatus.Indexing;
-            await db.SaveChangesAsync(ct);
+            await SetStageAsync(repo, ProcessingStatus.Indexing, ct);
 
             foreach (var node in composed.Nodes)
             {
@@ -99,14 +110,50 @@ public sealed class AnalysisPipeline(
             repo.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
         }
+        catch (CancelRequestedException)
+        {
+            db.ChangeTracker.Clear();
+            db.Attach(repo);
+            repo.Status = ProcessingStatus.Cancelled;
+            repo.CancelRequested = false;
+            repo.StageStartedAt = null;
+            repo.ProcessedCount = 0;
+            repo.TotalCount = 0;
+            repo.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
         catch (Exception ex)
         {
             db.ChangeTracker.Clear();
             db.Attach(repo);
             repo.Status = ProcessingStatus.Failed;
+            var message = ex.Message ?? ex.GetType().Name;
+            repo.ErrorMessage = message.Length <= 2000 ? message : message[..2000];
             repo.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
             throw new AnalysisPipelineException($"Analysis of {repo.FullName} failed: {ex.Message}", ex);
+        }
+    }
+
+    private async Task SetStageAsync(Repository repo, ProcessingStatus status, CancellationToken ct)
+    {
+        repo.Status = status;
+        repo.StageStartedAt = DateTimeOffset.UtcNow;
+        repo.ProcessedCount = 0;
+        repo.TotalCount = 0;
+        repo.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureNotCancelledAsync(Repository repo, CancellationToken ct)
+    {
+        var cancelRequested = await db.Repositories.AsNoTracking()
+            .Where(r => r.Id == repo.Id)
+            .Select(r => r.CancelRequested)
+            .FirstOrDefaultAsync(ct);
+        if (cancelRequested)
+        {
+            throw new CancelRequestedException();
         }
     }
 
@@ -133,8 +180,12 @@ public sealed class AnalysisPipeline(
         var files = await git.ListFilesAtCommitAsync(workDir, head, ct);
         var sourceFiles = new List<ParsedSourceFile>();
 
+        repo.TotalCount = files.Take(options.Value.MaxFilesPerBatch).Count(HasSupportedExtension);
+        await db.SaveChangesAsync(ct);
+
         foreach (var file in files.Take(options.Value.MaxFilesPerBatch))
         {
+            ct.ThrowIfCancellationRequested();
             if (!HasSupportedExtension(file))
             {
                 continue;
@@ -144,9 +195,19 @@ public sealed class AnalysisPipeline(
             {
                 sourceFiles.Add(new ParsedSourceFile(file, content));
             }
+            repo.ProcessedCount++;
+            if (repo.ProcessedCount % 25 == 0)
+            {
+                await EnsureNotCancelledAsync(repo, ct);
+                repo.UpdatedAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
         }
 
-        return await parser.ParseAsync(head, repo.DefaultBranch, sourceFiles, ct);
+        var result = await parser.ParseAsync(head, repo.DefaultBranch, sourceFiles, ct);
+        repo.ProcessedCount = repo.TotalCount;
+        await db.SaveChangesAsync(ct);
+        return result;
     }
 
     private async Task<Dictionary<string, KnowledgeNode>> LoadPreviousNodesAsync(Repository repo, CancellationToken ct)
@@ -193,9 +254,16 @@ public sealed class AnalysisPipeline(
         Repository repo,
         CancellationToken ct)
     {
+        repo.TotalCount = parse.Entities.Count;
+        await db.SaveChangesAsync(ct);
+
+        await EnsureNotCancelledAsync(repo, ct);
+
         var aiContent = new Dictionary<string, AiContent>(StringComparer.Ordinal);
+        var processed = 0;
         foreach (var entity in parse.Entities)
         {
+            ct.ThrowIfCancellationRequested();
             var needsAi = !previousNodes.TryGetValue(entity.Key, out var previous)
                 || previous.StructuralHash != entity.StructuralHash
                 || previous.PromptVersion != summarizer.PromptVersion;
@@ -206,6 +274,15 @@ public sealed class AnalysisPipeline(
                     .Where(r => r.From == entity.Key || r.To == entity.Key)
                     .ToList();
                 aiContent[entity.Key] = await summarizer.SummarizeAsync(entity, relationships, repo.GitHubId, ct);
+            }
+
+            processed++;
+            if (processed % 10 == 0 || processed == parse.Entities.Count)
+            {
+                await EnsureNotCancelledAsync(repo, ct);
+                repo.ProcessedCount = processed;
+                repo.UpdatedAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync(ct);
             }
         }
         return aiContent;
@@ -294,6 +371,8 @@ public sealed class AnalysisPipeline(
                 Symbol = n.Symbol,
                 Kind = n.Kind.ToString(),
                 Content = n.Content,
+                ClassDiagram = n.ClassDiagram,
+                SequenceDiagram = n.SequenceDiagram,
                 StructuralHash = n.StructuralHash,
                 SemanticHash = n.SemanticHash,
                 Confidence = n.Confidence
@@ -321,7 +400,7 @@ public sealed class AnalysisPipeline(
     {
         try
         {
-            var result = await overviewService.GenerateAsync(repo, composed.Nodes, ct);
+            var result = await overviewService.GenerateAsync(repo, composed.Nodes, composed.Edges, ct);
             db.ProjectOverviews.Add(new ProjectOverview
             {
                 Id = Guid.NewGuid(),
@@ -361,6 +440,8 @@ public sealed class StoredNode
     public string Symbol { get; set; } = "";
     public string Kind { get; set; } = "";
     public string Content { get; set; } = "";
+    public string? ClassDiagram { get; set; }
+    public string? SequenceDiagram { get; set; }
     public string StructuralHash { get; set; } = "";
     public string SemanticHash { get; set; } = "";
     public double Confidence { get; set; }
@@ -376,3 +457,5 @@ public sealed class StoredEdge
 }
 
 public sealed class AnalysisPipelineException(string message, Exception inner) : Exception(message, inner);
+
+public sealed class CancelRequestedException : OperationCanceledException;

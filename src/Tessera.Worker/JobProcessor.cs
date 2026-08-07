@@ -62,6 +62,19 @@ public sealed class JobProcessor(
             return;
         }
 
+        if (repo.CancelRequested)
+        {
+            repo.Status = ProcessingStatus.Cancelled;
+            repo.CancelRequested = false;
+            repo.StageStartedAt = null;
+            repo.ProcessedCount = 0;
+            repo.TotalCount = 0;
+            repo.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Skipped cancelled repository {repo}", repo.FullName);
+            return;
+        }
+
         logger.LogInformation("Processing repository {repo} ({status})", repo.FullName, repo.Status);
 
         var pipeline = scope.ServiceProvider.GetRequiredService<AnalysisPipeline>();

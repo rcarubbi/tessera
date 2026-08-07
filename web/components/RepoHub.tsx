@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import SnapshotSelector from "@/components/SnapshotSelector";
 import GraphView from "@/components/GraphView";
 import DiffView from "@/components/DiffView";
@@ -92,6 +93,12 @@ export default function RepoHub({ repoId }: { repoId: string }) {
               {repo && <StatusBadge status={repo.status} />}
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                href={`/repos/${repoId}/progress`}
+                className="text-sm text-accent hover:underline"
+              >
+                Track analysis →
+              </Link>
               <ReprocessButton repoId={repoId} fullName={repo?.fullName ?? repoId} onReprocessed={loadRepo} />
               <SnapshotSelector snapshots={snapshots} commit={commit} onChange={setCommit} loading={snapshotsLoading} />
             </div>

@@ -64,16 +64,73 @@ public sealed class RuleBasedSummarizer : ISemanticSummarizer
         RuleBasedArchitect.AppendSection(sb, entity);
 
         sb.AppendLine();
+        sb.AppendLine("## Error handling");
+        sb.AppendLine("- Not analyzed (structural only; AI provider unavailable)");
+        sb.AppendLine();
+        sb.AppendLine("## State management");
+        sb.AppendLine("- Not analyzed (structural only; AI provider unavailable)");
+        sb.AppendLine();
+        sb.AppendLine("## Known issues");
+        sb.AppendLine("- None identified (structural analysis only)");
+
+        sb.AppendLine();
         sb.AppendLine("## Confidence");
         sb.AppendLine("0.60 (structural only)");
 
+        var isMethod = entity.Kind is NodeKind.Method or NodeKind.Function;
         return new AiContent
         {
             Content = sb.ToString(),
+            ClassDiagram = isMethod ? null : BuildClassDiagram(entity, relationships),
+            SequenceDiagram = isMethod ? BuildSequenceDiagram(entity, relationships) : null,
             Confidence = 0.60,
             Model = "rule-based",
             PromptVersion = PromptVersion
         };
+    }
+
+    private static string BuildClassDiagram(ParsedEntity entity, IReadOnlyList<ParsedRelationship> relationships)
+    {
+        var deps = relationships
+            .Where(r => r.From == entity.Key)
+            .Select(r => r.To)
+            .Distinct()
+            .Take(8)
+            .ToList();
+        var sb = new StringBuilder();
+        sb.AppendLine("classDiagram");
+        sb.AppendLine($"    class {MermaidId(entity.Symbol)} {{");
+        sb.AppendLine($"        +{KindLabel(entity.Kind)}");
+        sb.AppendLine("    }");
+        foreach (var dep in deps)
+        {
+            sb.AppendLine($"    {MermaidId(entity.Symbol)} --> {MermaidId(dep)}");
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildSequenceDiagram(ParsedEntity entity, IReadOnlyList<ParsedRelationship> relationships)
+    {
+        var calls = relationships
+            .Where(r => r.From == entity.Key && r.Type == EdgeType.Calls)
+            .Select(r => r.To)
+            .Distinct()
+            .Take(8)
+            .ToList();
+        var sb = new StringBuilder();
+        sb.AppendLine("sequenceDiagram");
+        sb.AppendLine($"    participant self as {entity.Symbol}");
+        foreach (var call in calls)
+        {
+            sb.AppendLine($"    self->>{MermaidId(call)}: invoke");
+        }
+        return sb.ToString();
+    }
+
+    private static string MermaidId(string key)
+    {
+        var sanitized = new string(key.Where(char.IsLetterOrDigit).ToArray());
+        return sanitized.Length > 0 ? sanitized[..Math.Min(sanitized.Length, 40)] : "entity";
     }
 
     private static string KindLabel(NodeKind kind) => kind switch

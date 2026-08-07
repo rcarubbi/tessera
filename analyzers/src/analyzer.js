@@ -317,6 +317,7 @@ function analyzeFile(file) {
         language,
         startLine: decl.startLine,
         endLine: decl.endLine,
+        source: source.slice(decl.startIndex, decl.startIndex + Math.min(decl.endIndex - decl.startIndex, 4000)),
         structuralHash,
         ownerKey,
         calls,

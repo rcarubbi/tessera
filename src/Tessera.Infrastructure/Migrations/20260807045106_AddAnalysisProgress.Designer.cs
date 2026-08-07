@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Tessera.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Tessera.Infrastructure.Data;
 namespace Tessera.Infrastructure.Migrations
 {
     [DbContext(typeof(TesseraDbContext))]
-    partial class TesseraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807045106_AddAnalysisProgress")]
+    partial class AddAnalysisProgress
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -253,9 +256,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("AnalyzedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("ClassDiagram")
-                        .HasColumnType("text");
-
                     b.Property<string>("CommitSha")
                         .IsRequired()
                         .HasColumnType("text");
@@ -308,9 +308,6 @@ namespace Tessera.Infrastructure.Migrations
 
                     b.Property<string>("SemanticHash")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("SequenceDiagram")
                         .HasColumnType("text");
 
                     b.Property<Guid>("SnapshotId")
@@ -465,9 +462,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<bool>("CancelRequested")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("CloneUrl")
                         .HasColumnType("text");

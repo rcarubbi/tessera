@@ -88,3 +88,22 @@ test('cross-file injected dependency resolves', async () => {
   assert.equal(edge.from.split('::').pop(), 'OrderService');
   assert.equal(edge.to.split('::').pop(), 'PaymentRepo');
 });
+
+test('mixed-technology batch parses both languages and emits source', async () => {
+  await Parser.init();
+  const result = await analyzeBatch([
+    { path: 'web/src/api/orders.ts', content: `export class OrdersApi {\n  getOrders(): Promise<Response> {\n    return fetch('/api/orders');\n  }\n}` },
+    { path: 'src/Api/OrdersController.cs', content: `public class OrdersController { }` },
+  ]);
+  const languages = new Set(result.entities.map((e) => e.language));
+  assert.ok(languages.has('typescript'), 'TypeScript entities parsed');
+  assert.ok(languages.has('c_sharp'), 'C# entities parsed');
+  const tsEntity = result.entities.find((e) => e.language === 'typescript');
+  const csEntity = result.entities.find((e) => e.language === 'c_sharp');
+  assert.ok(tsEntity.source && tsEntity.source.includes('fetch'), 'source snippet emitted for TS entity');
+  assert.ok(csEntity.source && csEntity.source.includes('OrdersController'), 'source snippet emitted for C# entity');
+  const crossTechEdge = result.relationships.find(
+    (r) => r.from.startsWith('web/') && r.to.includes('OrdersController'),
+  );
+  assert.equal(crossTechEdge, undefined, 'static analysis must not invent cross-technology edges');
+});

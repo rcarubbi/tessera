@@ -18,6 +18,11 @@ public class Repository
     public DateTimeOffset? LastSnapshotAt { get; set; }
     public int NodeCount { get; set; }
     public int EdgeCount { get; set; }
+    public DateTimeOffset? StageStartedAt { get; set; }
+    public int ProcessedCount { get; set; }
+    public int TotalCount { get; set; }
+    public string? ErrorMessage { get; set; }
+    public bool CancelRequested { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

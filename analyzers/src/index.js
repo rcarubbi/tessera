@@ -127,6 +127,7 @@ async function analyzeBatch(files) {
       language: e.language,
       startLine: e.startLine,
       endLine: e.endLine,
+      source: e.source,
       structuralHash: e.structuralHash,
       ownerKey: e.ownerKey,
     })),
