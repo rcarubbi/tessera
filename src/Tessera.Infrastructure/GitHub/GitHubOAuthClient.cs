@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Tessera.Infrastructure.GitHub;
 
@@ -99,8 +100,13 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
 
     private sealed class OAuthTokenResponse
     {
+        [JsonPropertyName("access_token")]
         public string? AccessToken { get; set; }
+
+        [JsonPropertyName("error")]
         public string? Error { get; set; }
+
+        [JsonPropertyName("error_description")]
         public string? ErrorDescription { get; set; }
     }
 
@@ -108,6 +114,8 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
     {
         public string Login { get; set; } = "";
         public string? Name { get; set; }
+
+        [JsonPropertyName("avatar_url")]
         public string? AvatarUrl { get; set; }
     }
 
