@@ -63,6 +63,11 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
         var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<OAuthTokenResponse>(ct);
+        if (!string.IsNullOrEmpty(payload?.Error))
+        {
+            throw new InvalidOperationException(
+                $"GitHub OAuth failed: {payload.Error}{(string.IsNullOrEmpty(payload.ErrorDescription) ? "" : $" ({payload.ErrorDescription})")}");
+        }
         return payload?.AccessToken ?? throw new InvalidOperationException("GitHub OAuth returned no access token.");
     }
 
@@ -94,6 +99,8 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
     private sealed class OAuthTokenResponse
     {
         public string? AccessToken { get; set; }
+        public string? Error { get; set; }
+        public string? ErrorDescription { get; set; }
     }
 
     private sealed class GitHubUserResponse

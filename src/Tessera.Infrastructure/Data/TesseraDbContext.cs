@@ -16,6 +16,8 @@ public class TesseraDbContext : DbContext
     public DbSet<KnowledgeNodeProvenance> KnowledgeNodeProvenances => Set<KnowledgeNodeProvenance>();
     public DbSet<GraphEdge> GraphEdges => Set<GraphEdge>();
     public DbSet<NodeEmbedding> NodeEmbeddings => Set<NodeEmbedding>();
+    public DbSet<ProjectOverview> ProjectOverviews => Set<ProjectOverview>();
+    public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
     public DbSet<GitHubUser> GitHubUsers => Set<GitHubUser>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
 
@@ -98,6 +100,32 @@ public class TesseraDbContext : DbContext
             e.HasOne(n => n.Snapshot)
                 .WithMany()
                 .HasForeignKey(n => n.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProjectOverview>(e =>
+        {
+            e.HasIndex(o => new { o.SnapshotId }).IsUnique();
+            e.Property(o => o.Content).HasColumnType("text");
+            e.HasOne(o => o.Repository)
+                .WithMany()
+                .HasForeignKey(o => o.RepositoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(o => o.Snapshot)
+                .WithMany()
+                .HasForeignKey(o => o.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ConversationMessage>(e =>
+        {
+            e.HasIndex(m => new { m.RepositoryId, m.CreatedAt });
+            e.Property(m => m.Content).HasColumnType("text");
+            e.Property(m => m.CitationsJson).HasColumnType("text");
+            e.Property(m => m.WarningsJson).HasColumnType("text");
+            e.HasOne(m => m.Repository)
+                .WithMany()
+                .HasForeignKey(m => m.RepositoryId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

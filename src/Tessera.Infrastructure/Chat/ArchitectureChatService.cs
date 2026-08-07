@@ -180,6 +180,17 @@ public sealed class ArchitectureChatService(
 
         if (retrieved.Count == 0)
         {
+            var overview = await TryGetOverviewAsync(snapshot.Id, ct);
+            if (overview is not null)
+            {
+                yield return new ChatStreamItem(ChatStreamKind.Mode, Mode: ChatMode.Rag);
+                var overviewAnswer = await AnswerFromOverviewAsync(question, overview.Content, ct);
+                await foreach (var item in StreamResultBodyAsync(overviewAnswer, retrieved, ct))
+                {
+                    yield return item;
+                }
+                yield break;
+            }
             await foreach (var item in StreamResultAsync(NoContextResult(), ct))
             {
                 yield return item;
@@ -411,6 +422,13 @@ public sealed class ArchitectureChatService(
 
         if (retrieved.Count == 0)
         {
+            var snapshot = await ResolveSnapshotAsync(repositoryId, commitSha, ct);
+            var overview = snapshot is null ? null : await TryGetOverviewAsync(snapshot.Id, ct);
+            if (overview is not null)
+            {
+                var answer = await AnswerFromOverviewAsync(question, overview.Content, ct);
+                return new ChatResult(ChatMode.Rag, answer, Array.Empty<ChatCitation>(), Array.Empty<string>());
+            }
             return new ChatResult(ChatMode.NoContext,
                 "I couldn't find relevant context for this question in the current snapshot.",
                 Array.Empty<ChatCitation>(), Array.Empty<string>());
@@ -459,6 +477,11 @@ public sealed class ArchitectureChatService(
 
     private ChatResult BuildRagResult(string answer, IReadOnlyList<RetrievedNode> retrieved)
     {
+        if (retrieved.Count == 0)
+        {
+            return new ChatResult(ChatMode.Rag, answer, Array.Empty<ChatCitation>(), Array.Empty<string>());
+        }
+
         var citations = new List<ChatCitation>();
         foreach (var node in retrieved.Select(r => r.Node))
         {
@@ -563,6 +586,25 @@ public sealed class ArchitectureChatService(
             query = query.Where(s => s.CommitSha == commitSha);
         }
         return await query.OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(ct);
+    }
+
+    private async Task<ProjectOverview?> TryGetOverviewAsync(Guid snapshotId, CancellationToken ct) =>
+        await db.ProjectOverviews.AsNoTracking()
+            .Where(o => o.SnapshotId == snapshotId)
+            .FirstOrDefaultAsync(ct);
+
+    private async Task<string> AnswerFromOverviewAsync(string question, string overviewContent, CancellationToken ct)
+    {
+        var provider = providers.Primary;
+        if (provider is null)
+        {
+            return overviewContent;
+        }
+
+        var prompt = $"User question: {question}\n\nProject overview (architecture, stack, conventions):\n{overviewContent}";
+        var messages = new[] { new ChatMessage("system", SystemPrompt), new ChatMessage("user", prompt) };
+        var (produced, answer) = await CollectProviderAnswerAsync(messages, provider, providers.Fallback, ct);
+        return produced ? answer : overviewContent;
     }
 
     private static long EstimateTokens(string text) => (text.Length + 3) / 4;

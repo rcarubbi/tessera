@@ -66,7 +66,7 @@ public sealed class RetrievalService(
 
         var embedding = providers.Embedding;
         var scored = embedding is not null
-            ? await EmbeddingScoreAsync(embedding, snapshot, nodes, question, ct)
+            ? await TryEmbeddingScoreAsync(embedding, snapshot, nodes, question, ct)
             : LexicalScore(nodes, question);
 
         return scored
@@ -75,6 +75,23 @@ public sealed class RetrievalService(
             .Where(r => r.Score >= threshold)
             .Take(topK)
             .ToList();
+    }
+
+    private async Task<IReadOnlyList<RetrievedNode>> TryEmbeddingScoreAsync(
+        IEmbeddingProvider embedding,
+        Snapshot snapshot,
+        List<KnowledgeNode> nodes,
+        string question,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await EmbeddingScoreAsync(embedding, snapshot, nodes, question, ct);
+        }
+        catch (Exception)
+        {
+            return LexicalScore(nodes, question);
+        }
     }
 
     private async Task<IReadOnlyList<RetrievedNode>> EmbeddingScoreAsync(

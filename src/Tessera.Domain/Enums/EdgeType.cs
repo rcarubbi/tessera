@@ -11,5 +11,6 @@ public enum EdgeType
     Publishes,
     Consumes,
     InvokesEndpoint,
-    Injected
+    Injected,
+    HasMethod
 }

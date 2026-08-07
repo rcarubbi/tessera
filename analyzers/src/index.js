@@ -70,6 +70,33 @@ async function analyzeBatch(files) {
     }
   }
 
+  const keyToEntity = new Map(entities.map((e) => [e.key, e]));
+  const methodsByOwner = new Map();
+  for (const entity of entities) {
+    if (entity.kind !== 'method' || !entity.ownerKey) continue;
+    if (!methodsByOwner.has(entity.ownerKey)) methodsByOwner.set(entity.ownerKey, []);
+    methodsByOwner.get(entity.ownerKey).push(entity);
+  }
+
+  // Connect concrete member implementations to the interface member they implement.
+  for (const entity of entities) {
+    if (entity.kind === 'method') continue;
+    for (const base of entity.bases || []) {
+      const candidates = (symbolIndex.get(base) || []).filter((k) => k !== entity.key);
+      if (candidates.length !== 1) continue;
+      const target = keyToEntity.get(candidates[0]);
+      if (!target || target.kind !== 'interface') continue;
+      const targetMethods = methodsByOwner.get(target.key) || [];
+      for (const method of methodsByOwner.get(entity.key) || []) {
+        const simple = method.symbol.split('.').pop();
+        const implTarget = targetMethods.find((m) => m.symbol.split('.').pop() === simple);
+        if (implTarget) {
+          emit(method.key, implTarget.key, 'Implements', `${method.path}:${method.startLine}`, 0.9);
+        }
+      }
+    }
+  }
+
   const resolveTypes = (entity, field, type, confidence) => {
     for (const dep of entity[field] || []) {
       const already = inFileRelationships.some((r) => r.from === entity.key && r.type === type);
@@ -101,6 +128,7 @@ async function analyzeBatch(files) {
       startLine: e.startLine,
       endLine: e.endLine,
       structuralHash: e.structuralHash,
+      ownerKey: e.ownerKey,
     })),
     relationships,
   };

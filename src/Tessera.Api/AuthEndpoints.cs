@@ -89,7 +89,7 @@ public static class AuthEndpoints
             || !string.Equals(state, expectedState, StringComparison.Ordinal)
             || !IsConfigured(options.Value))
         {
-            return RedirectToWeb(options.Value, "error=oauth_failed");
+            return RedirectToWeb(options.Value, "error=oauth_failed&reason=invalid_state");
         }
 
         string accessToken;
@@ -101,9 +101,9 @@ public static class AuthEndpoints
             githubUser = await oauth.GetUserAsync(accessToken, ct);
             installations = await oauth.GetUserInstallationsAsync(accessToken, ct);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return RedirectToWeb(options.Value, "error=oauth_failed");
+            return RedirectToWeb(options.Value, $"error=oauth_failed&reason={Uri.EscapeDataString(ex.Message)}");
         }
 
         var user = await db.GitHubUsers.FirstOrDefaultAsync(u => u.Login == githubUser.Login, ct);
@@ -150,7 +150,7 @@ public static class AuthEndpoints
     }
 
     private static IResult RedirectToWeb(GitHubOAuthOptions options, string query)
-        => Results.Redirect($"{options.WebUrl.TrimEnd('/')}/repos?{query}");
+        => Results.Redirect($"{options.WebUrl.TrimEnd('/')}/login?{query}");
 
     private static bool IsConfigured(GitHubOAuthOptions options)
         => !string.IsNullOrEmpty(options.ClientId) && !string.IsNullOrEmpty(options.ClientSecret);

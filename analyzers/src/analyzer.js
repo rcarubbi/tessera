@@ -276,15 +276,26 @@ function analyzeFile(file) {
         (m) => m.startIndex <= inv.startIndex && m.endIndex >= inv.endIndex
       ) || null;
 
-    const classForEntity = (decl) =>
-      classes.find(
-        (c) => c.startIndex <= decl.startIndex && c.endIndex >= decl.endIndex
-      ) || null;
+    // A member's owner is any class-like declaration (class, interface, struct,
+    // record, enum) that contains it. Pick the innermost one so nested types win.
+    const owners = declarations.filter((d) => d.kind !== 'method');
+    const ownerForEntity = (decl) => {
+      let owner = null;
+      for (const candidate of owners) {
+        if (candidate.startIndex <= decl.startIndex && candidate.endIndex >= decl.endIndex) {
+          if (!owner || candidate.endIndex - candidate.startIndex < owner.endIndex - owner.startIndex) {
+            owner = candidate;
+          }
+        }
+      }
+      return owner;
+    };
 
     const entitiesOut = [];
     for (const decl of declarations) {
-      const owner = decl.kind === 'method' ? classForEntity(decl) : null;
+      const owner = decl.kind === 'method' ? ownerForEntity(decl) : null;
       const scope = owner ? `${owner.name}.${decl.name}` : decl.name;
+      const ownerKey = owner ? `${file.path}::${owner.name}` : null;
       const calls = decl.kind === 'method'
         ? invocations.filter((inv) => {
             const ownerMethod = methodForInvocation(inv);
@@ -307,6 +318,7 @@ function analyzeFile(file) {
         startLine: decl.startLine,
         endLine: decl.endLine,
         structuralHash,
+        ownerKey,
         calls,
         bases: decl.bases || [],
         fieldTypes: decl.kind === 'method' ? [] : extractFieldTypes(decl.node),
@@ -316,6 +328,22 @@ function analyzeFile(file) {
 
     const relationships = [];
     const entityBySymbol = new Map(entitiesOut.map((e) => [e.symbol, e]));
+    const entityByKey = new Map(entitiesOut.map((e) => [e.key, e]));
+
+    for (const entity of entitiesOut) {
+      if (!entity.ownerKey) continue;
+      const owner = entityByKey.get(entity.ownerKey);
+      if (owner && owner.key !== entity.key) {
+        relationships.push({
+          from: entity.ownerKey,
+          to: entity.key,
+          type: 'HasMethod',
+          evidence: `${entity.path}:${entity.startLine}`,
+          confidence: 1,
+          isStatic: true,
+        });
+      }
+    }
 
     for (const entity of entitiesOut) {
       for (const base of entity.bases) {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { streamChat, type ChatStreamEvent, type Citation } from "@/lib/api";
+import { getChatMessages, postChatMessage, streamChat, type ChatStreamEvent, type Citation } from "@/lib/api";
 
 type Turn = {
   question: string;
@@ -29,14 +29,47 @@ export default function ChatPanel({
   const [question, setQuestion] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastRef = useRef<Turn | null>(null);
 
   useEffect(() => {
-    setTurns([]);
-  }, [repoId, commit]);
+    let cancelled = false;
+    getChatMessages(repoId)
+      .then((msgs) => {
+        if (cancelled) return;
+        const loaded: Turn[] = [];
+        let current: Turn | null = null;
+        for (const m of msgs) {
+          if (m.role === "user") {
+            current = { question: m.content, answer: "", warnings: m.warnings ?? [], citations: m.citations ?? [] };
+            loaded.push(current);
+          } else if (m.role === "assistant" && current) {
+            current.answer = m.content;
+            current.mode = m.mode ?? undefined;
+            current.warnings = m.warnings ?? [];
+            current.citations = m.citations ?? [];
+          }
+        }
+        setTurns(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, streaming, question]);
+
+  const updateLast = (fn: (t: Turn) => Turn) => {
+    if (lastRef.current) lastRef.current = fn(lastRef.current);
+    setTurns((prev) => {
+      const next = [...prev];
+      const last = fn({ ...next[next.length - 1] });
+      next[next.length - 1] = last;
+      return next;
+    });
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +80,7 @@ export default function ChatPanel({
     setStreaming(true);
 
     const turn: Turn = { question: q, answer: "", warnings: [], citations: [] };
+    lastRef.current = turn;
     setTurns((prev) => [...prev, turn]);
     const abort = new AbortController();
     abortRef.current = abort;
@@ -56,39 +90,33 @@ export default function ChatPanel({
         repoId,
         q,
         (ev: ChatStreamEvent) => {
-          setTurns((prev) => {
-            const next = [...prev];
-            const last = { ...next[next.length - 1] };
-            if (ev.kind === "mode") last.mode = ev.mode;
-            else if (ev.kind === "warnings") last.warnings = ev.warnings ?? [];
-            else if (ev.kind === "delta") last.answer += ev.text ?? "";
-            else if (ev.kind === "citations") last.citations = ev.citations ?? [];
-            else if (ev.kind === "error") last.error = ev.error;
-            next[next.length - 1] = last;
-            return next;
-          });
+          if (ev.kind === "mode") updateLast((t) => ({ ...t, mode: ev.mode }));
+          else if (ev.kind === "warnings") updateLast((t) => ({ ...t, warnings: ev.warnings ?? [] }));
+          else if (ev.kind === "delta") updateLast((t) => ({ ...t, answer: t.answer + (ev.text ?? "") }));
+          else if (ev.kind === "citations") updateLast((t) => ({ ...t, citations: ev.citations ?? [] }));
+          else if (ev.kind === "error") updateLast((t) => ({ ...t, error: ev.error }));
         },
         abort.signal,
       );
     } catch (err) {
       if ((err as Error).name === "AbortError") {
-        setTurns((prev) => {
-          const next = [...prev];
-          const last = { ...next[next.length - 1] };
-          last.error = "Stopped.";
-          next[next.length - 1] = last;
-          return next;
-        });
+        updateLast((t) => ({ ...t, error: "Stopped." }));
       } else {
-        setTurns((prev) => {
-          const next = [...prev];
-          const last = { ...next[next.length - 1] };
-          last.error = (err as Error).message;
-          next[next.length - 1] = last;
-          return next;
-        });
+        updateLast((t) => ({ ...t, error: (err as Error).message }));
       }
     } finally {
+      const done = lastRef.current;
+      if (done && !done.error && done.answer) {
+        postChatMessage(repoId, { role: "user", content: done.question }).catch(() => {});
+        postChatMessage(repoId, {
+          role: "assistant",
+          content: done.answer,
+          mode: done.mode,
+          citations: done.citations,
+          warnings: done.warnings,
+        }).catch(() => {});
+      }
+      lastRef.current = null;
       setStreaming(false);
       setQuestion("");
       abortRef.current = null;
@@ -129,6 +157,12 @@ export default function ChatPanel({
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.answer}</ReactMarkdown>
                 )}
               </div>
+              {t.mode === "NoContext" && (
+                <div className="mt-2 text-dim">
+                  No relevant context was found in this snapshot. Try naming a file or entity, e.g.{" "}
+                  <em>&quot;what breaks if I change Order?&quot;</em>.
+                </div>
+              )}
               {t.citations.length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Citations</div>

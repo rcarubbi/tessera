@@ -49,6 +49,13 @@ services:
       GitHubOAuth__CallbackUrl: "http://localhost:5080/api/auth/callback"
       GitHubOAuth__WebUrl: "http://localhost:3000"
       Auth__Admins: "${AUTH_ADMINS:-}"
+      # LLM providers (Gemini free tier; key in .env as AI_GEMINI_API_KEY):
+      Ai__Providers__0__Name: "gemini"
+      Ai__Providers__0__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
+      Ai__Providers__0__ApiKey: "${AI_GEMINI_API_KEY:-}"
+      Ai__Providers__0__Model: "gemini-3.5-flash-lite"
+      Ai__Primary: "gemini"
+      Ai__RequestsPerMinute: "12"
       # Auth__SessionLifetimeHours: "12"
     ports:
       - "5080:8080"
@@ -83,7 +90,7 @@ services:
       Ai__Providers__0__Name: "gemini"
       Ai__Providers__0__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
       Ai__Providers__0__ApiKey: "${AI_GEMINI_API_KEY:-}"
-      Ai__Providers__0__Model: "gemini-3.1-flash-lite"
+      Ai__Providers__0__Model: "gemini-3.5-flash-lite"
       Ai__Primary: "gemini"
       Ai__RequestsPerMinute: "12"
       # Ai__Fallback: "qwen"

@@ -13,6 +13,7 @@ export type AuthUser = {
 type AuthContextValue = {
   token: string | null;
   user: AuthUser | null;
+  hydrated: boolean;
   login: (token: string) => void;
   logout: () => void;
   refreshUser: () => Promise<AuthUser | null>;
@@ -23,6 +24,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => getToken());
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
     const current = getToken();
@@ -48,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       token,
       user,
+      hydrated,
       login: (t: string) => {
         setToken(t);
         setTokenState(t);
@@ -66,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       refreshUser,
     }),
-    [token, user, refreshUser],
+    [token, user, hydrated, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

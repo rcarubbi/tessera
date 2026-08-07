@@ -77,6 +77,27 @@ export type Citation = {
   label: string;
 };
 
+export type StoredMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  mode?: string | null;
+  citations: Citation[];
+  warnings: string[];
+  createdAt: string;
+};
+
+export async function getChatMessages(repositoryId: string): Promise<StoredMessage[]> {
+  return apiGet<StoredMessage[]>(`/api/repositories/${repositoryId}/chat/messages`);
+}
+
+export async function postChatMessage(
+  repositoryId: string,
+  entry: { role: "user" | "assistant"; content: string; mode?: string; citations?: Citation[]; warnings?: string[] },
+): Promise<StoredMessage> {
+  return apiPost<StoredMessage>(`/api/repositories/${repositoryId}/chat/messages`, entry);
+}
+
 export async function streamChat(
   repositoryId: string,
   question: string,

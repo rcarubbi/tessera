@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.Queries;
 
@@ -92,6 +93,97 @@ public static class QueryEndpoints
             {
                 return Results.NotFound(new { error = ex.Message });
             }
+        });
+
+        app.MapGet("/api/repositories/{repositoryId:guid}/overview", async (
+            Guid repositoryId,
+            HttpContext context,
+            TesseraDbContext db,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+
+            var snapshot = await db.Snapshots.AsNoTracking()
+                .Where(s => s.RepositoryId == repositoryId)
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+            if (snapshot is null)
+            {
+                return Results.NotFound(new { error = "Repository has no analyzed snapshot yet." });
+            }
+
+            var overview = await db.ProjectOverviews.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.SnapshotId == snapshot.Id, ct);
+            if (overview is null)
+            {
+                return Results.NotFound(new { error = "No overview generated for this snapshot yet. Run a new analysis to generate it." });
+            }
+
+            return Results.Ok(new
+            {
+                overview = overview.Content,
+                model = overview.Model,
+                nodeCount = overview.NodeCount,
+                generatedAt = overview.GeneratedAt
+            });
+        });
+
+        app.MapGet("/api/repositories/{repositoryId:guid}/nodes", async (
+            Guid repositoryId,
+            string q,
+            string? commit,
+            int limit,
+            HttpContext context,
+            TesseraDbContext db,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+
+            var query = db.Snapshots.AsNoTracking()
+                .Where(s => s.RepositoryId == repositoryId);
+            if (!string.IsNullOrEmpty(commit))
+            {
+                query = query.Where(s => s.CommitSha == commit);
+            }
+            var snapshot = await query.OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(ct);
+            if (snapshot is null)
+            {
+                return Results.NotFound(new { error = "Repository has no analyzed snapshot yet." });
+            }
+
+            var term = q.Trim();
+            if (term.Length < 1)
+            {
+                return Results.Ok(Array.Empty<object>());
+            }
+
+            var like = $"%{term}%";
+            var nodes = await db.KnowledgeNodes.AsNoTracking()
+                .Where(n => n.SnapshotId == snapshot.Id)
+                .Where(n =>
+                    EF.Functions.ILike(n.Path, like) ||
+                    EF.Functions.ILike(n.Key, like) ||
+                    EF.Functions.ILike(n.Symbol, like) ||
+                    EF.Functions.ILike(n.Kind.ToString(), like))
+                .OrderBy(n => n.Path)
+                .ThenBy(n => n.StartLine)
+                .Take(Math.Clamp(limit, 1, 200))
+                .Select(n => new
+                {
+                    n.Key,
+                    n.Symbol,
+                    Kind = n.Kind.ToString(),
+                    n.Language,
+                    n.Path,
+                    n.StartLine,
+                    n.EndLine,
+                    n.Confidence,
+                    ReviewStatus = n.ReviewStatus.ToString(),
+                })
+                .ToListAsync(ct);
+            return Results.Ok(nodes);
         });
 
         app.MapGet("/api/repositories/{repositoryId:guid}/graph", async (

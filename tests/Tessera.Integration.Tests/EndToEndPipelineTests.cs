@@ -9,6 +9,7 @@ using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
+using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.GitHub;
 using Tessera.Infrastructure.Queries;
@@ -166,9 +167,19 @@ public sealed class EndToEndPipelineTests : IDisposable
             new RuleBasedSummarizer(),
             new FileSystemObjectStore(_objectRoot),
             new NoopGitHubAppClient(),
+            new NoopOverviewService(),
             Options.Create(new AnalysisPipelineOptions { WorkRoot = _workRoot }),
             Options.Create(new AiOptions { ReviewThreshold = 0.7 }),
             Options.Create(new GitHubOptions()));
+    }
+
+    private sealed class NoopOverviewService : IOverviewService
+    {
+        public Task<OverviewResult> GenerateAsync(
+            Repository repo,
+            IReadOnlyList<KnowledgeNode> nodes,
+            CancellationToken ct = default) =>
+            Task.FromResult(new OverviewResult("", "none", 0, DateTimeOffset.UtcNow));
     }
 
     private TesseraDbContext CreateDb()

@@ -8,6 +8,7 @@ using Tessera.Domain.Parsing;
 using Tessera.Domain.Ports;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
+using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.Data;
 using Tessera.Infrastructure.GitHub;
 
@@ -26,6 +27,7 @@ public sealed class AnalysisPipeline(
     ISemanticSummarizer summarizer,
     IObjectStore store,
     IGitHubAppClient github,
+    IOverviewService overviewService,
     IOptions<AnalysisPipelineOptions> options,
     IOptions<AiOptions> aiOptions,
     IOptions<GitHubOptions> githubOptions)
@@ -87,6 +89,7 @@ public sealed class AnalysisPipeline(
             }
 
             await PersistAsync(repo, snapshotId, head, composed, aiContent, ct);
+            await GenerateOverviewAsync(repo, snapshotId, composed, ct);
 
             repo.Status = ProcessingStatus.Completed;
             repo.LastProcessedCommit = head;
@@ -98,6 +101,8 @@ public sealed class AnalysisPipeline(
         }
         catch (Exception ex)
         {
+            db.ChangeTracker.Clear();
+            db.Attach(repo);
             repo.Status = ProcessingStatus.Failed;
             repo.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
@@ -146,13 +151,26 @@ public sealed class AnalysisPipeline(
 
     private async Task<Dictionary<string, KnowledgeNode>> LoadPreviousNodesAsync(Repository repo, CancellationToken ct)
     {
-        if (repo.LastProcessedCommit is null)
+        var commit = repo.LastProcessedCommit;
+        if (commit is null)
+        {
+            // Manual reprocess clears LastProcessedCommit to bypass the skip check,
+            // but we still want to diff against the latest snapshot so unchanged
+            // nodes are not re-sent to the LLM.
+            commit = await db.Snapshots.AsNoTracking()
+                .Where(s => s.RepositoryId == repo.Id)
+                .OrderByDescending(s => s.CreatedAt)
+                .Select(s => s.CommitSha)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        if (commit is null)
         {
             return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
         }
 
         var previousSnapshot = await db.Snapshots
-            .Where(s => s.RepositoryId == repo.Id && s.CommitSha == repo.LastProcessedCommit)
+            .Where(s => s.RepositoryId == repo.Id && s.CommitSha == commit)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
@@ -202,6 +220,19 @@ public sealed class AnalysisPipeline(
         CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        var priorSnapshotIds = await db.Snapshots
+            .Where(s => s.RepositoryId == repo.Id && s.CommitSha == head)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+        foreach (var priorId in priorSnapshotIds)
+        {
+            var priorNodeIds = db.KnowledgeNodes.Where(n => n.SnapshotId == priorId).Select(n => n.Id);
+            await db.KnowledgeNodeProvenances.Where(p => priorNodeIds.Contains(p.NodeId)).ExecuteDeleteAsync(ct);
+            await db.KnowledgeNodes.Where(n => n.SnapshotId == priorId).ExecuteDeleteAsync(ct);
+            await db.GraphEdges.Where(e => e.SnapshotId == priorId).ExecuteDeleteAsync(ct);
+            await db.Snapshots.Where(s => s.Id == priorId).ExecuteDeleteAsync(ct);
+        }
 
         var snapshot = new Snapshot
         {
@@ -280,6 +311,33 @@ public sealed class AnalysisPipeline(
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+    }
+
+    private async Task GenerateOverviewAsync(
+        Repository repo,
+        Guid snapshotId,
+        ComposedSnapshot composed,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await overviewService.GenerateAsync(repo, composed.Nodes, ct);
+            db.ProjectOverviews.Add(new ProjectOverview
+            {
+                Id = Guid.NewGuid(),
+                RepositoryId = repo.Id,
+                SnapshotId = snapshotId,
+                Content = result.Overview,
+                Model = result.Model,
+                NodeCount = result.NodeCount,
+                GeneratedAt = result.GeneratedAt
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception)
+        {
+            // Overview generation must never fail the analysis.
+        }
     }
 
     private static bool HasSupportedExtension(string path)

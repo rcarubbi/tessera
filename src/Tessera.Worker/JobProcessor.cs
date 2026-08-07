@@ -35,6 +35,23 @@ public sealed class JobProcessor(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
 
+        // Reclaim repos left in an in-progress state by a crashed worker so they
+        // are re-analyzed instead of being stuck forever (which also skews the
+        // dashboard counters).
+        var staleCutoff = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var reclaimed = await db.Repositories
+            .Where(r => r.IsConnected
+                && (r.Status == ProcessingStatus.Cloning
+                    || r.Status == ProcessingStatus.Parsing
+                    || r.Status == ProcessingStatus.Analyzing
+                    || r.Status == ProcessingStatus.Indexing)
+                && r.UpdatedAt < staleCutoff)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ProcessingStatus.Pending), ct);
+        if (reclaimed > 0)
+        {
+            logger.LogWarning("Reclaimed {count} stuck repository job(s) back to Pending.", reclaimed);
+        }
+
         var repo = await db.Repositories
             .Where(r => r.IsConnected && r.Status == ProcessingStatus.Pending)
             .OrderBy(r => r.CreatedAt)

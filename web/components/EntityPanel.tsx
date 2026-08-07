@@ -11,11 +11,13 @@ export default function EntityPanel({
   commit,
   nodeKey,
   onClose,
+  onFocus,
 }: {
   repoId: string;
   commit: string | null;
   nodeKey: string;
   onClose: () => void;
+  onFocus: (key: string) => void;
 }) {
   const [node, setNode] = useState<GraphNode | null>(null);
   const [consumers, setConsumers] = useState<Consumers | null>(null);
@@ -58,6 +60,10 @@ export default function EntityPanel({
       {loading && <div className="muted" style={{ marginTop: 12 }}>Loading…</div>}
       {error && <div className="mt-3 text-danger">{error}</div>}
 
+      {!loading && !error && !node && (
+        <div className="mt-3 text-dim">Node not found in this snapshot.</div>
+      )}
+
       {node && (
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -86,7 +92,10 @@ export default function EntityPanel({
             <ul className="list" style={{ marginTop: 4 }}>
               {consumers.items.map((c) => (
                 <li key={`${c.fromKey}-${c.type}`}>
-                  {c.fromSymbol} <span className="path">{c.path}:{c.line}</span>
+                  <button type="button" className="link-button" onClick={() => onFocus(c.fromKey)}>
+                    {c.fromSymbol}
+                  </button>{" "}
+                  <span className="path">{c.path}:{c.line}</span>
                 </li>
               ))}
             </ul>
@@ -103,7 +112,10 @@ export default function EntityPanel({
             <ul className="list" style={{ marginTop: 4 }}>
               {chain.items.map((c) => (
                 <li key={c.key}>
-                  {c.symbol} <span className="path">{c.path}:{c.line}</span>
+                  <button type="button" className="link-button" onClick={() => onFocus(c.key)}>
+                    {c.symbol}
+                  </button>{" "}
+                  <span className="path">{c.path}:{c.line}</span>
                 </li>
               ))}
             </ul>
