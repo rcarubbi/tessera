@@ -33,6 +33,7 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
     public GitHubOAuthClient(IHttpClientFactory factory, GitHubOAuthOptions options)
     {
         _http = factory.CreateClient(nameof(GitHubOAuthClient));
+        _http.BaseAddress = new Uri("https://api.github.com/");
         _options = options;
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("tessera");
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
