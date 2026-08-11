@@ -37,13 +37,3 @@ export const AI_PRESETS: AiPreset[] = [
     defaultModel: "",
   },
 ];
-
-export function mergePresets(available: { name: string; baseUrl: string; model: string }[]): AiPreset[] {
-  const merged = [...AI_PRESETS];
-  for (const item of available) {
-    if (!merged.some((p) => p.name.toLowerCase() === item.name.toLowerCase())) {
-      merged.push({ name: item.name, label: item.name, baseUrl: item.baseUrl, defaultModel: item.model });
-    }
-  }
-  return merged;
-}

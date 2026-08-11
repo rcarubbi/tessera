@@ -103,6 +103,44 @@ public sealed class EndToEndPipelineTests : IDisposable
     }
 
     [Fact]
+    public async Task Local_offline_repository_runs_to_completion_after_activation()
+    {
+        using var db = CreateDb();
+
+        var repo = new Repository
+        {
+            Id = Guid.NewGuid(),
+            GitHubId = 0,
+            Owner = "local",
+            Name = "offline-app",
+            FullName = "offline-app",
+            CloneUrl = _gitRepoRoot,
+            DefaultBranch = "main",
+            InstallationId = 0,
+            CreatedBy = "admin",
+            IsConnected = false,
+            Status = ProcessingStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Repositories.Add(repo);
+        await db.SaveChangesAsync();
+
+        repo.IsConnected = true;
+        repo.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        var pipeline = CreatePipeline(db);
+        await pipeline.ProcessAsync(repo);
+
+        Assert.Equal(ProcessingStatus.Completed, repo.Status);
+        Assert.False(string.IsNullOrEmpty(repo.LastProcessedCommit));
+        Assert.True(repo.NodeCount > 0);
+        var snapshot = await db.Snapshots.SingleAsync(s => s.RepositoryId == repo.Id);
+        Assert.Equal(repo.LastProcessedCommit, snapshot.CommitSha);
+    }
+
+    [Fact]
     public async Task Pipeline_output_answers_impact_and_diff_queries()
     {
         using var db = CreateDb();

@@ -169,9 +169,6 @@ public sealed class AiSummarizerTests
             budget ?? new TokenBudgetTracker(Options.Create(new AiOptions { DailyBudgetTokens = 10_000_000 })),
             Options.Create(new AiOptions
             {
-                Primary = "deepseek",
-                Fallback = "qwen",
-                LargeTier = "deepseek-large",
                 ComplexityThresholdLines = 200,
                 DailyBudgetTokens = 10_000_000
             }),

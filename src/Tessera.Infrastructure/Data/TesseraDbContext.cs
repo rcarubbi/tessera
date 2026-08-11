@@ -31,6 +31,8 @@ public class TesseraDbContext : DbContext
             e.HasIndex(r => r.FullName).IsUnique();
             e.HasIndex(r => r.InstallationId);
             e.HasIndex(r => new { r.Status, r.UpdatedAt });
+            e.Property(r => r.CreatedBy).HasMaxLength(256);
+            e.HasIndex(r => r.CreatedBy);
         });
 
         modelBuilder.Entity<GitHubInstallation>(e =>

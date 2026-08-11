@@ -7,6 +7,8 @@ public class AiSettings
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
     public string ApiKey { get; set; } = "";
-    public string? FallbackProviderName { get; set; }
+    public string Endpoint { get; set; } = "chat/completions";
+    public string? EmbeddingModel { get; set; }
+    public string EmbeddingEndpoint { get; set; } = "embeddings";
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

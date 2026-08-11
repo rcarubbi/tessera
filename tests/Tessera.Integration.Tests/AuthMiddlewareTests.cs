@@ -88,6 +88,6 @@ public sealed class AuthMiddlewareTests : IClassFixture<WebApplicationFactory<Pr
         var response = await client.GetAsync("/api/auth/callback?code=abc&state=random");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.StartsWith("http://localhost:3000/repos?error=oauth_failed", response.Headers.Location!.ToString());
+        Assert.StartsWith("http://localhost:3000/login?error=oauth_failed", response.Headers.Location!.ToString());
     }
 }

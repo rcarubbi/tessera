@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Infrastructure.Data;
 
@@ -10,9 +9,9 @@ public sealed record AiSettingsRequest(
     string BaseUrl,
     string Model,
     string? ApiKey,
-    string? FallbackProviderName);
-
-public sealed record AiProviderCatalogItem(string Name, string BaseUrl, string Model);
+    string? Endpoint,
+    string? EmbeddingModel,
+    string? EmbeddingEndpoint);
 
 public sealed record AiSettingsResponse(
     string ProviderName,
@@ -20,14 +19,14 @@ public sealed record AiSettingsResponse(
     string Model,
     string? ApiKeyMasked,
     bool HasApiKey,
-    string? FallbackProviderName,
-    DateTimeOffset? UpdatedAt,
-    IReadOnlyList<AiProviderCatalogItem> AvailableProviders);
+    string? Endpoint,
+    string? EmbeddingModel,
+    string? EmbeddingEndpoint,
+    DateTimeOffset? UpdatedAt);
 
 public sealed class AiSettingsService(
     TesseraDbContext db,
-    AiSettingsCache cache,
-    IOptions<AiOptions> options)
+    AiSettingsCache cache)
 {
     private static string? MaskedHint(string? key)
     {
@@ -40,7 +39,7 @@ public sealed class AiSettingsService(
 
     public Task<AiSettingsResponse> GetAsync(CancellationToken ct = default)
     {
-        return Task.FromResult(ToResponse(cache.GetSnapshot(), Catalog()));
+        return Task.FromResult(ToResponse(cache.GetSnapshot()));
     }
 
     public async Task<AiSettingsResponse> SaveAsync(AiSettingsRequest request, CancellationToken ct = default)
@@ -70,9 +69,22 @@ public sealed class AiSettingsService(
         settings.ProviderName = request.ProviderName.Trim();
         settings.BaseUrl = request.BaseUrl.Trim().TrimEnd('/');
         settings.Model = request.Model.Trim();
-        settings.FallbackProviderName = string.IsNullOrWhiteSpace(request.FallbackProviderName)
-            ? null
-            : request.FallbackProviderName.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Endpoint))
+        {
+            settings.Endpoint = request.Endpoint.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(request.EmbeddingModel))
+        {
+            settings.EmbeddingModel = null;
+        }
+        else
+        {
+            settings.EmbeddingModel = request.EmbeddingModel.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(request.EmbeddingEndpoint))
+        {
+            settings.EmbeddingEndpoint = request.EmbeddingEndpoint.Trim();
+        }
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
             settings.ApiKey = request.ApiKey.Trim();
@@ -87,25 +99,18 @@ public sealed class AiSettingsService(
         await db.SaveChangesAsync(ct);
         await cache.RefreshAsync(ct);
 
-        return ToResponse(cache.GetSnapshot(), Catalog());
+        return ToResponse(cache.GetSnapshot());
     }
 
-    private IReadOnlyList<AiProviderCatalogItem> Catalog()
-        => options.Value.Providers
-            .Where(p => !string.IsNullOrEmpty(p.Name))
-            .Select(p => new AiProviderCatalogItem(p.Name, p.BaseUrl, p.Model))
-            .ToList();
-
-    private static AiSettingsResponse ToResponse(AiSettingsSnapshot snapshot, IReadOnlyList<AiProviderCatalogItem> catalog)
+    private static AiSettingsResponse ToResponse(AiSettingsSnapshot snapshot)
     {
-        var primary = snapshot.Primary;
         var provider = snapshot.Providers.FirstOrDefault(p =>
-            string.Equals(p.Name, primary, StringComparison.OrdinalIgnoreCase))
+            string.Equals(p.Name, snapshot.Primary, StringComparison.OrdinalIgnoreCase))
             ?? snapshot.Providers.FirstOrDefault();
 
         if (provider is null)
         {
-            return new AiSettingsResponse("", "", "", null, false, snapshot.Fallback, snapshot.UpdatedAt, catalog);
+            return new AiSettingsResponse("", "", "", null, false, null, null, null, snapshot.UpdatedAt);
         }
 
         return new AiSettingsResponse(
@@ -114,8 +119,9 @@ public sealed class AiSettingsService(
             provider.Model,
             MaskedHint(provider.ApiKey),
             !string.IsNullOrEmpty(provider.ApiKey),
-            snapshot.Fallback,
-            snapshot.UpdatedAt,
-            catalog);
+            provider.Endpoint,
+            provider.EmbeddingModel,
+            provider.EmbeddingEndpoint,
+            snapshot.UpdatedAt);
     }
 }

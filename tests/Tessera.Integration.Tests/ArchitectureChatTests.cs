@@ -207,8 +207,6 @@ internal sealed class ChatSeed
     {
         var options = Options.Create(new AiOptions
         {
-            Primary = "primary",
-            Fallback = "fallback",
             ReviewThreshold = 0.7,
             TopK = 5,
             SimilarityThreshold = 0.0,

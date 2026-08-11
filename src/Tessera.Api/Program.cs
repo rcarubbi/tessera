@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Tessera.Api;
+using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
 using Tessera.Infrastructure;
 using Tessera.Infrastructure.Ai;
@@ -114,7 +115,9 @@ app.MapGet("/api/repositories", async (HttpContext context, TesseraDbContext db)
     var query = db.Repositories.AsNoTracking();
     if (access is not null && !access.IsAdmin)
     {
-        query = query.Where(r => access.InstallationIds.Contains(r.InstallationId));
+        query = query.Where(r =>
+            access.InstallationIds.Contains(r.InstallationId)
+            || !string.IsNullOrEmpty(r.CreatedBy) && r.CreatedBy == access.Login);
     }
     return Results.Ok(await query.OrderByDescending(r => r.UpdatedAt).ToListAsync());
 });
@@ -127,6 +130,52 @@ app.MapGet("/api/repositories/{id:guid}", async (Guid id, HttpContext context, T
     return repo is null
         ? Results.NotFound(new { error = "Repository not found" })
         : Results.Ok(repo);
+});
+
+app.MapPost("/api/repositories/local", async (LocalRepositoryRequest? request, HttpContext context, TesseraDbContext db) =>
+{
+    var access = context.GetAccess();
+    if (access is null)
+    {
+        return Results.Json(new { error = "Unauthorized." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var name = request?.Name?.Trim() ?? "";
+    if (!LocalRepositoryValidator.IsValidName(name))
+    {
+        return Results.BadRequest(new { error = "Name must be 1-100 characters and contain only letters, digits, dots, dashes and underscores." });
+    }
+
+    var cloneUrl = request?.CloneUrl?.Trim() ?? "";
+    if (!LocalRepositoryValidator.IsValidPath(cloneUrl))
+    {
+        return Results.BadRequest(new { error = "Path must be an absolute path inside the worker (e.g. /repos/local/myapp)." });
+    }
+
+    if (await db.Repositories.AnyAsync(r => r.FullName == name))
+    {
+        return Results.Conflict(new { error = "A repository with this name already exists." });
+    }
+
+    var repo = new Repository
+    {
+        Id = Guid.NewGuid(),
+        GitHubId = 0,
+        Owner = "local",
+        Name = name,
+        FullName = name,
+        DefaultBranch = string.IsNullOrWhiteSpace(request?.DefaultBranch) ? "main" : request.DefaultBranch.Trim(),
+        CloneUrl = cloneUrl,
+        InstallationId = 0,
+        CreatedBy = access.Login,
+        IsConnected = false,
+        Status = ProcessingStatus.Pending,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+    db.Repositories.Add(repo);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/repositories/{repo.Id}", repo);
 });
 
 app.MapGet("/api/repositories/{id:guid}/snapshots", async (Guid id, HttpContext context, TesseraDbContext db) =>
@@ -159,6 +208,7 @@ app.MapPost("/api/repositories/{id:guid}/reprocess", async (Guid id, ReprocessRe
         return Results.BadRequest(new { error = "Incremental reprocess requires at least one analysis option (static and/or AI)." });
     }
 
+    repo.IsConnected = true;
     repo.Status = ProcessingStatus.Pending;
     repo.CancelRequested = false;
     if (mode == ReprocessMode.Full)
@@ -222,5 +272,19 @@ app.MapSettingsEndpoints();
 app.Run();
 
 public sealed record ReprocessRequest(ReprocessMode Mode, bool IncludeStatic = false, bool IncludeAi = false);
+
+public sealed record LocalRepositoryRequest(string Name, string CloneUrl, string? DefaultBranch);
+
+public static class LocalRepositoryValidator
+{
+    private static readonly System.Text.RegularExpressions.Regex NameRegex =
+        new("^[A-Za-z0-9._-]{1,100}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public static bool IsValidName(string name)
+        => NameRegex.IsMatch(name);
+
+    public static bool IsValidPath(string path)
+        => path.StartsWith('/') && path.Length > 1 && !path.Contains("..");
+}
 
 public partial class Program { }

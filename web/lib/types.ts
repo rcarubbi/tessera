@@ -7,6 +7,7 @@ export type Repository = {
   defaultBranch: string;
   cloneUrl?: string | null;
   installationId: number;
+  createdBy?: string | null;
   isConnected: boolean;
   status: number;
   lastProcessedCommit: string | null;
@@ -134,17 +135,16 @@ export type ChainItem = {
 };
 export type Chain = { entity: string; commitSha: string; items: ChainItem[] };
 
-export type AiProviderCatalogItem = { name: string; baseUrl: string; model: string };
-
 export type AiSettings = {
   providerName: string;
   baseUrl: string;
   model: string;
   apiKeyMasked: string | null;
   hasApiKey: boolean;
-  fallbackProviderName: string | null;
+  endpoint: string | null;
+  embeddingModel: string | null;
+  embeddingEndpoint: string | null;
   updatedAt: string | null;
-  availableProviders: AiProviderCatalogItem[];
 };
 
 export type AiSettingsRequest = {
@@ -152,5 +152,7 @@ export type AiSettingsRequest = {
   baseUrl: string;
   model: string;
   apiKey?: string | null;
-  fallbackProviderName?: string | null;
+  endpoint?: string | null;
+  embeddingModel?: string | null;
+  embeddingEndpoint?: string | null;
 };

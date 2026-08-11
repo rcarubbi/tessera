@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
+import AddLocalRepo from "@/components/AddLocalRepo";
 import { useAuth } from "@/components/AuthContext";
-import { apiGet, ApiError } from "@/lib/api";
-import { card, cardError, field, statCard, statLabel, statValue } from "@/lib/ui";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { badge, card, cardError, field, statCard, statLabel, statValue } from "@/lib/ui";
 import type { Repository } from "@/lib/types";
 
 const STATUS_FAILED = 6;
@@ -18,6 +19,7 @@ export default function ReposPage() {
   const [repos, setRepos] = useState<Repository[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [startingId, setStartingId] = useState<string | null>(null);
 
   const load = () => {
     setError(null);
@@ -41,6 +43,18 @@ export default function ReposPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, router, logout]);
+
+  const startAnalyze = async (id: string) => {
+    setStartingId(id);
+    try {
+      await apiPost(`/api/repositories/${id}/reprocess`, { mode: "full" });
+      load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setStartingId(null);
+    }
+  };
 
   const q = query.trim().toLowerCase();
   const filtered =
@@ -68,21 +82,24 @@ export default function ReposPage() {
             <div>
               <h1 className="text-2xl font-bold">Repositories</h1>
               <p className="mt-1 text-sm text-dim">
-                Knowledge graphs of connected GitHub repositories.
+                Knowledge graphs of connected GitHub and local repositories.
               </p>
             </div>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search repositories…"
-              className={`${field} w-64`}
-            />
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search repositories…"
+                className={`${field} w-64`}
+              />
+              <AddLocalRepo onAdded={load} />
+            </div>
           </div>
 
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className={statCard}>
               <span className={statValue}>{stats.total}</span>
-              <span className={statLabel}>Connected</span>
+              <span className={statLabel}>Total</span>
             </div>
             <div className={statCard}>
               <span className={`${statValue} text-warn`}>{stats.analyzing}</span>
@@ -100,7 +117,11 @@ export default function ReposPage() {
 
           {error && <div className={`${card} ${cardError} mb-4 text-danger`}>{error}</div>}
           {!repos && !error && <div className="text-dim">Loading repositories…</div>}
-          {repos && repos.length === 0 && <div className={card}>No connected repositories yet.</div>}
+          {repos && repos.length === 0 && (
+            <div className={card}>
+              No repositories yet. Connect one via the GitHub App or add a local repository.
+            </div>
+          )}
           {repos && repos.length > 0 && filtered.length === 0 && (
             <div className={card}>No repositories match &quot;{query}&quot;.</div>
           )}
@@ -108,6 +129,8 @@ export default function ReposPage() {
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
             {filtered.map((repo) => {
               const failed = repo.status === STATUS_FAILED;
+              const local = repo.githubId === 0;
+              const inactive = local && !repo.isConnected;
               return (
                 <div
                   key={repo.id}
@@ -115,7 +138,10 @@ export default function ReposPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <Link href={`/repos/${repo.id}`} className="min-w-0 text-fg hover:text-accent">
-                      <strong className="block truncate">{repo.fullName}</strong>
+                      <strong className="block truncate">
+                        {repo.fullName}
+                        {local && <span className={`${badge} ml-2 align-middle`}>local</span>}
+                      </strong>
                     </Link>
                     <StatusBadge status={repo.status} />
                   </div>
@@ -133,7 +159,17 @@ export default function ReposPage() {
                   </div>
                   <div className="text-xs text-dim">branch {repo.defaultBranch}</div>
                   <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3">
-                    <span className="flex items-center gap-3 text-xs">
+                    <span className="flex flex-wrap items-center gap-3 text-xs">
+                      {inactive && (
+                        <button
+                          type="button"
+                          className="text-accent hover:underline disabled:opacity-50"
+                          onClick={() => startAnalyze(repo.id)}
+                          disabled={startingId !== null}
+                        >
+                          {startingId === repo.id ? "Starting…" : "Analyze →"}
+                        </button>
+                      )}
                       <Link href={`/repos/${repo.id}`} className="text-accent hover:underline">
                         Open graph →
                       </Link>

@@ -64,30 +64,26 @@ access; admins (listed in `Auth__Admins`) see every repository.
 | `GitHub__AppUrl` | Public URL of the dashboard (used in OAuth/App flows). |
 | `GitHub__ApiUrl` | Defaults to `https://api.github.com`. |
 
-### LLM providers
+### LLM provider
 
-Providers are configured as a list; reference one as `Primary` or `Fallback`
-by `Name`:
+The LLM provider is configured entirely through the dashboard
+(**Settings > AI**) and stored in the database. Neither the API key nor any
+other provider connection detail (base URL, model, embedding model) lives in
+environment variables or config files; both the `api` and `worker` processes
+pick it up automatically. No provider configured means **structural-only mode**
+(rule-based summaries, no LLM calls).
+
+The tuning knobs below stay in config/env:
 
 | Variable | Description |
 |---|---|
-| `Ai__Providers__0__Name` | Logical name, e.g. `deepseek` or `qwen`. |
-| `Ai__Providers__0__BaseUrl` | OpenAI-compatible base URL (e.g. `https://api.deepseek.com/v1`). |
-| `Ai__Providers__0__ApiKey` | API key. **Never commit it.** |
-| `Ai__Providers__0__Model` | Chat model id (e.g. `deepseek-chat`). |
-| `Ai__Providers__0__Endpoint` | Chat path, default `chat/completions`. |
-| `Ai__Providers__0__EmbeddingModel` | Embedding model id (optional). |
-| `Ai__Providers__0__EmbeddingEndpoint` | Embedding path, default `embeddings`. |
-| `Ai__Primary` / `Ai__Fallback` | Which provider names to use; falls back on errors. |
-| `Ai__Embedding` | Provider name used for embeddings (RAG). |
 | `Ai__TopK` | RAG retrieval k (default `5`). |
 | `Ai__SimilarityThreshold` | Embedding cosine cutoff (default `0.5`). |
 | `Ai__ReviewThreshold` | Nodes with confidence below this go to the review queue (default `0.7`). |
 | `Ai__DailyBudgetTokens` | Per-repo daily token budget (default `2,000,000`). |
-| `Ai__ComplexityThresholdLines` | Files larger than this are routed to the `LargeTier` provider. |
-
-Leave `Ai__Primary`/`Ai__Fallback` empty to run in **structural-only mode**
-(rule-based summaries, no LLM calls).
+| `Ai__ComplexityThresholdLines` | Files larger than this are summarized more conservatively. |
+| `Ai__RequestsPerMinute` | Max LLM requests per minute (default unlimited). |
+| `Ai__MaxRetries` | Retries per LLM call (default `3`). |
 
 ## GitHub App setup
 
@@ -109,6 +105,29 @@ UPDATE "Repositories" SET "Status" = 0;
 
 (The worker skips repos whose `head` equals `LastProcessedCommit`.)
 
+## Local (offline) repositories
+
+Repositories that live on the host machine can be added from the dashboard
+(**Repositories → Add local repository**) instead of through the GitHub App.
+They are analyzed only manually (Analyze / Reprocess) — no webhook, no push
+trigger. The worker clones the URL verbatim, so mount the repository into the
+`worker` container yourself (there is no built-in mount), e.g.
+
+```yaml
+# worker service
+volumes:
+  - /path/to/repo:/repos/local/<name>:ro
+```
+
+and use `/repos/local/<name>` as the path when adding it. The name becomes the
+clone folder under `Worker__WorkRoot/repos`, so it must be filesystem-safe
+(letters, digits, `.`, `-`, `_`). The API container has no git and cannot see
+the worker's mounts, so a bad path is only reported when the worker clones
+(the repository moves to `Failed` with the error message).
+
+Local repositories are scoped to the user who added them (and admins), recorded
+in the `Repositories.CreatedBy` column.
+
 ## Hardening notes
 
 - `worker`, `api` and `analyzers` run with a **read-only root filesystem**
@@ -116,8 +135,10 @@ UPDATE "Repositories" SET "Status" = 0;
   memory limits. The worker also has a `pids_limit`.
 - Repo clones are mounted read-only (`:ro`) into the worker; analysis happens
   in-process inside the container, never against a host path.
-- Secrets come from environment variables, never from committed files. Run
-  `./tools/scan-secrets.ps1` (also wired into CI) to catch leaked keys.
+- GitHub/OAuth secrets come from environment variables, never from committed
+  files; LLM API keys are set through **Settings > AI** and stored in the
+  database. Run `./tools/scan-secrets.ps1` (also wired into CI) to catch leaked
+  keys.
 - Git repos are cloned with `--depth` into `Worker__WorkRoot`; keep that
   volume private (it contains customer source).
 - Migrations: the API applies `EnsureCreated`/migrations on startup. Use a

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Infrastructure.Data;
 
@@ -9,9 +8,6 @@ namespace Tessera.Infrastructure.Ai;
 public sealed record AiSettingsSnapshot(
     IReadOnlyList<ProviderConfig> Providers,
     string? Primary,
-    string? Fallback,
-    string? LargeTier,
-    string? Embedding,
     long Version,
     DateTimeOffset? UpdatedAt);
 
@@ -20,17 +16,15 @@ public sealed class AiSettingsCache
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly AiOptions _options;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AiSettingsSnapshot? _snapshot;
     private DateTimeOffset _loadedAt = DateTimeOffset.MinValue;
     private long _version;
     private bool _refreshQueued;
 
-    public AiSettingsCache(IServiceScopeFactory scopeFactory, IOptions<AiOptions> options)
+    public AiSettingsCache(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory;
-        _options = options.Value;
     }
 
     public AiSettingsSnapshot GetSnapshot()
@@ -100,54 +94,22 @@ public sealed class AiSettingsCache
 
     private AiSettingsSnapshot BuildSnapshot(AiSettings? settings)
     {
-        var providers = _options.Providers
-            .Select(p => new ProviderConfig
-            {
-                Name = p.Name,
-                BaseUrl = p.BaseUrl,
-                ApiKey = p.ApiKey,
-                Model = p.Model,
-                Endpoint = p.Endpoint,
-                EmbeddingModel = p.EmbeddingModel,
-                EmbeddingEndpoint = p.EmbeddingEndpoint
-            })
-            .ToList();
-
-        var primary = _options.Primary;
-        var fallback = _options.Fallback;
-
-        if (settings is not null && !string.IsNullOrWhiteSpace(settings.BaseUrl))
+        if (settings is null || string.IsNullOrWhiteSpace(settings.BaseUrl))
         {
-            var existing = providers.FirstOrDefault(p =>
-                string.Equals(p.Name, settings.ProviderName, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null)
-            {
-                existing.BaseUrl = settings.BaseUrl;
-                if (!string.IsNullOrWhiteSpace(settings.Model)) existing.Model = settings.Model;
-                if (!string.IsNullOrWhiteSpace(settings.ApiKey)) existing.ApiKey = settings.ApiKey;
-            }
-            else
-            {
-                providers.Add(new ProviderConfig
-                {
-                    Name = string.IsNullOrWhiteSpace(settings.ProviderName) ? "custom" : settings.ProviderName,
-                    BaseUrl = settings.BaseUrl,
-                    Model = settings.Model,
-                    ApiKey = settings.ApiKey
-                });
-            }
-
-            if (!string.IsNullOrWhiteSpace(settings.ProviderName))
-            {
-                primary = settings.ProviderName;
-            }
+            return new AiSettingsSnapshot(Array.Empty<ProviderConfig>(), null, _version, settings?.UpdatedAt);
         }
 
-        if (!string.IsNullOrWhiteSpace(settings?.FallbackProviderName))
+        var provider = new ProviderConfig
         {
-            fallback = settings.FallbackProviderName;
-        }
+            Name = settings.ProviderName,
+            BaseUrl = settings.BaseUrl,
+            Model = settings.Model,
+            ApiKey = settings.ApiKey,
+            Endpoint = string.IsNullOrWhiteSpace(settings.Endpoint) ? "chat/completions" : settings.Endpoint,
+            EmbeddingModel = settings.EmbeddingModel,
+            EmbeddingEndpoint = string.IsNullOrWhiteSpace(settings.EmbeddingEndpoint) ? "embeddings" : settings.EmbeddingEndpoint
+        };
 
-        return new AiSettingsSnapshot(providers, primary, fallback, _options.LargeTier, _options.Embedding, _version, settings?.UpdatedAt);
+        return new AiSettingsSnapshot([provider], settings.ProviderName, _version, settings.UpdatedAt);
     }
 }

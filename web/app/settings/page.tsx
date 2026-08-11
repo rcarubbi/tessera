@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, apiPut, ApiError } from "@/lib/api";
-import { mergePresets } from "@/lib/aiPresets";
+import { AI_PRESETS } from "@/lib/aiPresets";
 import type { AiSettings, AiSettingsRequest } from "@/lib/types";
 import { badge, badgeGreen, btn, btnPrimary, card, cardError, field } from "@/lib/ui";
 
@@ -23,12 +23,7 @@ export default function SettingsPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [fallback, setFallback] = useState("");
-
-  const presets = useMemo(
-    () => mergePresets(settings?.availableProviders ?? []),
-    [settings],
-  );
+  const [embeddingModel, setEmbeddingModel] = useState("");
 
   const load = useCallback(() => {
     setError(null);
@@ -38,7 +33,7 @@ export default function SettingsPage() {
         setProviderName(s.providerName);
         setBaseUrl(s.baseUrl);
         setModel(s.model);
-        setFallback(s.fallbackProviderName ?? "");
+        setEmbeddingModel(s.embeddingModel ?? "");
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
@@ -61,7 +56,7 @@ export default function SettingsPage() {
 
   const handleProviderChange = (value: string) => {
     setProviderName(value);
-    const preset = presets.find((p) => p.name === value);
+    const preset = AI_PRESETS.find((p) => p.name === value);
     if (preset) {
       setBaseUrl(preset.baseUrl);
       setModel(preset.defaultModel);
@@ -75,7 +70,7 @@ export default function SettingsPage() {
       providerName,
       baseUrl,
       model,
-      fallbackProviderName: fallback || null,
+      embeddingModel: embeddingModel.trim() ? embeddingModel.trim() : null,
       apiKey: apiKey.trim() ? apiKey.trim() : null,
     };
     setSaving(true);
@@ -126,7 +121,7 @@ export default function SettingsPage() {
                   <option value="" disabled>
                     Select a provider…
                   </option>
-                  {presets.map((p) => (
+                  {AI_PRESETS.map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.label}
                     </option>
@@ -170,19 +165,13 @@ export default function SettingsPage() {
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm">
-                <span className="text-dim">Fallback provider (optional)</span>
-                <select
+                <span className="text-dim">Embedding model (optional)</span>
+                <input
                   className={field}
-                  value={fallback}
-                  onChange={(e) => setFallback(e.target.value)}
-                >
-                  <option value="">None</option>
-                  {settings?.availableProviders.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  value={embeddingModel}
+                  onChange={(e) => setEmbeddingModel(e.target.value)}
+                  placeholder="Defaults to the chat model"
+                />
               </label>
 
               {settings?.updatedAt && (

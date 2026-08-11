@@ -12,6 +12,7 @@ public class Repository
     public string DefaultBranch { get; set; } = "main";
     public string? CloneUrl { get; set; }
     public long InstallationId { get; set; }
+    public string CreatedBy { get; set; } = "";
     public bool IsConnected { get; set; } = true;
     public ProcessingStatus Status { get; set; } = ProcessingStatus.Pending;
     public string? LastProcessedCommit { get; set; }

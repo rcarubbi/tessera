@@ -50,11 +50,11 @@ public sealed class ProviderRegistry : IProviderRegistry
 
     public IChatProvider? Primary => Get(_cache.GetSnapshot().Primary) ?? Providers.Values.FirstOrDefault();
 
-    public IChatProvider? LargeTier => Get(_cache.GetSnapshot().LargeTier);
+    public IChatProvider? LargeTier => null;
 
-    public IChatProvider? Fallback => Get(_cache.GetSnapshot().Fallback);
+    public IChatProvider? Fallback => null;
 
-    public IEmbeddingProvider? Embedding => (Get(_cache.GetSnapshot().Embedding) ?? Primary) as IEmbeddingProvider;
+    public IEmbeddingProvider? Embedding => Primary as IEmbeddingProvider;
 
     public int Count => Providers.Count;
 }
