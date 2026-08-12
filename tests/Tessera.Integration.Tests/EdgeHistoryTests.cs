@@ -132,6 +132,20 @@ public sealed class EdgeHistoryTests
     }
 
     [Fact]
+    public async Task Duplicate_edges_in_batch_create_single_history_row()
+    {
+        using var db = CreateDb();
+        var s1 = SeedSnapshot(db, "s1", Edge("A", "B"));
+        var edges = new[] { Edge("A", "B"), Edge("A", "B"), Edge("A", "B") };
+
+        await ApplyAsync(db, s1.Id, "s1", edges, null);
+
+        var rows = db.EdgeHistories.Where(h => h.FromKey == "A" && h.ToKey == "B").ToList();
+        Assert.Single(rows);
+        Assert.True(rows[0].Live);
+    }
+
+    [Fact]
     public async Task Edge_changes_reuses_diff_between_commits()
     {
         using var db = CreateDb();

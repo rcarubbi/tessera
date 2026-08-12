@@ -29,10 +29,11 @@ public static class EdgeHistoryUpdater
             .ToDictionary(Key, StringComparer.Ordinal);
 
         var toAdd = new List<EdgeHistory>();
+        var pendingKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var edge in edges)
         {
             var key = Key(edge);
-            if (previousEdgeKeys.Contains(key) || liveByKey.ContainsKey(key))
+            if (previousEdgeKeys.Contains(key) || liveByKey.ContainsKey(key) || !pendingKeys.Add(key))
             {
                 continue;
             }

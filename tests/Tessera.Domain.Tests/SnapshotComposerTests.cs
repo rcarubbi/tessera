@@ -106,4 +106,17 @@ public class SnapshotComposerTests
         Assert.NotEqual(serviceBefore, serviceAfter);
         Assert.NotEqual(ctrlBefore, ctrlAfter);
     }
+
+    [Fact]
+    public void Duplicate_relationships_are_composed_as_single_edge()
+    {
+        var parse = BuildParse("svc-hash");
+        parse.Relationships.Add(new ParsedRelationship { From = "PaymentController", To = "PaymentService", Type = EdgeType.Calls, Evidence = "second evidence" });
+
+        var composed = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parse, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+
+        var edge = Assert.Single(composed.Edges);
+        Assert.Equal("PaymentController", edge.FromKey);
+        Assert.Equal("PaymentService", edge.ToKey);
+    }
 }
