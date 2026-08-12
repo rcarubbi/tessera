@@ -4,6 +4,8 @@ using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.GitHub;
+using Tessera.Infrastructure.Queries;
+using Tessera.Infrastructure.Reviews;
 using Tessera.Worker;
 using Tessera.Worker.Pipeline;
 
@@ -21,6 +23,9 @@ builder.Services.AddScoped<IParserSidecarClient, ParserSidecarClient>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
 builder.Services.AddScoped<IArchitectureLinkingService, ArchitectureLinkingService>();
 builder.Services.AddScoped<AnalysisPipeline>();
+builder.Services.AddScoped<GraphQueryService>();
+builder.Services.AddScoped<ArchitectureRuleService>();
+builder.Services.AddScoped<PrReviewService>();
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection("GitHub"));
 builder.Services.AddSingleton<IGitHubAppClient>(sp =>
     new GitHubAppClient(sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IOptions<GitHubOptions>>()));

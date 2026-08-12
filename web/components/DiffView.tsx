@@ -9,10 +9,14 @@ export default function DiffView({
   repoId,
   snapshots,
   onSelect,
+  initialFrom,
+  initialTo,
 }: {
   repoId: string;
   snapshots: Snapshot[];
   onSelect: (key: string) => void;
+  initialFrom?: string;
+  initialTo?: string;
 }) {
   const sorted = useMemo(() => [...snapshots].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [snapshots]);
   const [from, setFrom] = useState<string>("");
@@ -20,6 +24,11 @@ export default function DiffView({
   const [diff, setDiff] = useState<Diff | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialFrom) setFrom(initialFrom);
+    if (initialTo) setTo(initialTo);
+  }, [initialFrom, initialTo]);
 
   useEffect(() => {
     if (sorted.length >= 2) {

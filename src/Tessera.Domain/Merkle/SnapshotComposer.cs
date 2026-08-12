@@ -125,9 +125,14 @@ public static class SnapshotComposer
         }
 
         var edges = new List<GraphEdge>();
+        var edgeKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rel in parse.Relationships)
         {
             if (!nodes.TryGetValue(rel.From, out var fromNode) || !nodes.TryGetValue(rel.To, out var toNode))
+            {
+                continue;
+            }
+            if (!edgeKeys.Add($"{rel.From}|{rel.To}|{rel.Type}"))
             {
                 continue;
             }

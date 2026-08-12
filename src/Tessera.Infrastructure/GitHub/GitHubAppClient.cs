@@ -27,7 +27,11 @@ public interface IGitHubAppClient
 {
     Task<string> CreateInstallationAccessTokenAsync(long installationId, CancellationToken ct = default);
     Task<IReadOnlyList<GitHubRepoInfo>> ListInstallationRepositoriesAsync(long installationId, string token, CancellationToken ct = default);
+    Task<long> PostPrCommentAsync(long installationId, string owner, string repo, int prNumber, string body, CancellationToken ct = default);
+    Task DeletePrCommentAsync(long installationId, string owner, string repo, long commentId, CancellationToken ct = default);
 }
+
+public sealed class GitHubApiException(string message) : Exception(message);
 
 public sealed class GitHubAppClient : IGitHubAppClient
 {
@@ -73,6 +77,46 @@ public sealed class GitHubAppClient : IGitHubAppClient
             .ToList() ?? new List<GitHubRepoInfo>();
     }
 
+    public async Task<long> PostPrCommentAsync(
+        long installationId,
+        string owner,
+        string repo,
+        int prNumber,
+        string body,
+        CancellationToken ct = default)
+    {
+        var token = await CreateInstallationAccessTokenAsync(installationId, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"repos/{owner}/{repo}/issues/{prNumber}/comments")
+        {
+            Content = JsonContent.Create(new { body })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await _http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await GitHubApiErrorAsync("comment post", response, ct);
+        }
+        var comment = await response.Content.ReadFromJsonAsync<CommentResponse>(ct);
+        return comment?.Id ?? 0;
+    }
+
+    public async Task DeletePrCommentAsync(
+        long installationId,
+        string owner,
+        string repo,
+        long commentId,
+        CancellationToken ct = default)
+    {
+        var token = await CreateInstallationAccessTokenAsync(installationId, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"repos/{owner}/{repo}/issues/comments/{commentId}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await _http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await GitHubApiErrorAsync("comment delete", response, ct);
+        }
+    }
+
     private string CreateAppJwt()
     {
         var pem = File.ReadAllText(_options.PrivateKeyPath);
@@ -90,6 +134,18 @@ public sealed class GitHubAppClient : IGitHubAppClient
 
     private static string Base64Url(byte[] data) =>
         Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static async Task<GitHubApiException> GitHubApiErrorAsync(string action, HttpResponseMessage response, CancellationToken ct)
+    {
+        var details = await response.Content.ReadAsStringAsync(ct);
+        var message = $"GitHub {action} failed: {(int)response.StatusCode} {response.ReasonPhrase} {details}";
+        return new GitHubApiException(message.Length <= 2000 ? message : message[..2000]);
+    }
+
+    private sealed class CommentResponse
+    {
+        public long Id { get; set; }
+    }
 
     private sealed class InstallationTokenResponse
     {

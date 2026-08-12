@@ -144,6 +144,10 @@ public static class GitHubEndpoints
                 await HandleInstallationRepositoriesAsync(db, root, ct);
                 return Results.Json(new { received = true, type = "installation_repositories" });
 
+            case "pull_request":
+                await HandlePullRequestAsync(db, root, ct);
+                return Results.Json(new { received = true, type = "pull_request" });
+
             default:
                 return Results.Json(new { received = true, type = eventName });
         }
@@ -210,6 +214,89 @@ public static class GitHubEndpoints
         {
             await UpsertRepositoriesAsync(db, repos, id, "added", ct);
         }
+    }
+
+    private static async Task HandlePullRequestAsync(TesseraDbContext db, JsonElement root, CancellationToken ct)
+    {
+        var action = TryGetString(root, "action", out var a) ? a : "";
+        if (action is not ("opened" or "reopened" or "synchronize"))
+        {
+            return;
+        }
+
+        if (!root.TryGetProperty("repository", out var repoElement) || repoElement.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var gitHubId = repoElement.TryGetProperty("id", out var idElement) && idElement.TryGetInt64(out var id) ? id : 0;
+        if (gitHubId == 0)
+        {
+            return;
+        }
+
+        var repo = await db.Repositories.FirstOrDefaultAsync(r => r.GitHubId == gitHubId, ct);
+        if (repo is null || !repo.IsConnected)
+        {
+            return;
+        }
+
+        if (!root.TryGetProperty("pull_request", out var pr) || pr.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var prNumber = pr.TryGetProperty("number", out var numberElement) && numberElement.TryGetInt32(out var number) ? number : 0;
+        if (prNumber == 0)
+        {
+            return;
+        }
+
+        var headSha = TryGetBranchSha(pr, "head");
+        var baseSha = TryGetBranchSha(pr, "base");
+        if (string.IsNullOrEmpty(headSha))
+        {
+            return;
+        }
+
+        var existing = await db.PullRequestReviews
+            .FirstOrDefaultAsync(r => r.RepositoryId == repo.Id && r.PrNumber == prNumber && r.HeadSha == headSha, ct);
+        if (existing is null)
+        {
+            db.PullRequestReviews.Add(new PullRequestReview
+            {
+                Id = Guid.NewGuid(),
+                RepositoryId = repo.Id,
+                PrNumber = prNumber,
+                HeadSha = headSha,
+                BaseSha = baseSha,
+                Status = PrReviewStatus.Queued,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        else
+        {
+            if (existing.Status == PrReviewStatus.Failed)
+            {
+                existing.Status = PrReviewStatus.Queued;
+            }
+            existing.BaseSha = baseSha;
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        repo.Status = ProcessingStatus.Pending;
+        repo.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string TryGetBranchSha(JsonElement pr, string side)
+    {
+        if (pr.TryGetProperty(side, out var branch) && branch.ValueKind == JsonValueKind.Object)
+        {
+            return TryGetString(branch, "sha", out var sha) ? sha : "";
+        }
+        return "";
     }
 
     private static async Task HandleInstallationRepositoriesAsync(TesseraDbContext db, JsonElement root, CancellationToken ct)

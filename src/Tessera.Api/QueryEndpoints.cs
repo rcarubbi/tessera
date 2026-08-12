@@ -16,14 +16,14 @@ public static class QueryEndpoints
             int? maxDepth,
             HttpContext context,
             TesseraDbContext db,
-            GraphQueryService queries,
+            ImpactAnalysisService impact,
             CancellationToken ct) =>
         {
             var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
             if (guarded is not null) return guarded;
             try
             {
-                return Results.Ok(await queries.ImpactAsync(repositoryId, entity, commit, maxDepth ?? 10, ct));
+                return Results.Ok(await impact.ReportAsync(repositoryId, entity, commit, maxDepth ?? 10, ct));
             }
             catch (SnapshotNotFoundException ex)
             {
@@ -88,6 +88,49 @@ public static class QueryEndpoints
             try
             {
                 return Results.Ok(await queries.DiffAsync(repositoryId, from, to, ct));
+            }
+            catch (SnapshotNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        });
+
+        app.MapGet("/api/repositories/{repositoryId:guid}/edge-history", async (
+            Guid repositoryId,
+            string from,
+            string to,
+            string? commit,
+            HttpContext context,
+            TesseraDbContext db,
+            GraphQueryService queries,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+            try
+            {
+                return Results.Ok(await queries.EdgeHistoryAsync(repositoryId, from, to, commit, ct));
+            }
+            catch (SnapshotNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        });
+
+        app.MapGet("/api/repositories/{repositoryId:guid}/edge-changes", async (
+            Guid repositoryId,
+            string from,
+            string to,
+            HttpContext context,
+            TesseraDbContext db,
+            GraphQueryService queries,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+            try
+            {
+                return Results.Ok(await queries.EdgeChangesAsync(repositoryId, from, to, ct));
             }
             catch (SnapshotNotFoundException ex)
             {

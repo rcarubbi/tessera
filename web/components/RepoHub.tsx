@@ -10,13 +10,15 @@ import ChatPanel from "@/components/ChatPanel";
 import EntityPanel from "@/components/EntityPanel";
 import FilesPanel from "@/components/FilesPanel";
 import OverviewPanel from "@/components/OverviewPanel";
+import RulesPanel from "@/components/RulesPanel";
+import PrPanel from "@/components/PrPanel";
 import StatusBadge from "@/components/StatusBadge";
 import { TopBar } from "@/components/TopBar";
 import { apiGet } from "@/lib/api";
 import { card, cardError } from "@/lib/ui";
 import type { Repository, Snapshot } from "@/lib/types";
 
-type Tab = "overview" | "files" | "graph" | "diff" | "review" | "chat";
+type Tab = "overview" | "files" | "graph" | "diff" | "review" | "chat" | "rules" | "pr";
 
 export default function RepoHub({ repoId }: { repoId: string }) {
   const [repo, setRepo] = useState<Repository | null>(null);
@@ -24,6 +26,7 @@ export default function RepoHub({ repoId }: { repoId: string }) {
   const [commit, setCommit] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("graph");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [diffTarget, setDiffTarget] = useState<{ from: string; to: string } | null>(null);
   const [snapshotsLoading, setSnapshotsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +72,8 @@ export default function RepoHub({ repoId }: { repoId: string }) {
     { id: "diff", label: "Diff" },
     { id: "review", label: "Review" },
     { id: "chat", label: "Chat" },
+    { id: "rules", label: "Rules" },
+    { id: "pr", label: "PR" },
   ];
 
   return (
@@ -139,9 +144,21 @@ export default function RepoHub({ repoId }: { repoId: string }) {
               {tab === "graph" && (
                 <GraphView repoId={repoId} commit={commit} onSelect={openEntity} selectedKey={selectedKey} />
               )}
-              {tab === "diff" && <DiffView repoId={repoId} snapshots={snapshots} onSelect={openEntity} />}
+              {tab === "diff" && (
+                <DiffView repoId={repoId} snapshots={snapshots} onSelect={openEntity} initialFrom={diffTarget?.from} initialTo={diffTarget?.to} />
+              )}
               {tab === "review" && <ReviewPanel repoId={repoId} onSelect={openEntity} />}
               {tab === "chat" && <ChatPanel repoId={repoId} commit={commit} onSelect={openEntity} />}
+              {tab === "rules" && (
+                <RulesPanel
+                  repoId={repoId}
+                  onOpenDiff={(from, to) => {
+                    setDiffTarget({ from, to });
+                    setTab("diff");
+                  }}
+                />
+              )}
+              {tab === "pr" && <PrPanel repo={repo} onRepoUpdated={loadRepo} />}
             </div>
             {selectedKey && (
               <div className="w-[420px] shrink-0">
@@ -153,6 +170,10 @@ export default function RepoHub({ repoId }: { repoId: string }) {
                   onFocus={(key) => {
                     setSelectedKey(key);
                     setTab("graph");
+                  }}
+                  onOpenDiff={(from, to) => {
+                    setDiffTarget({ from, to });
+                    setTab("diff");
                   }}
                 />
               </div>

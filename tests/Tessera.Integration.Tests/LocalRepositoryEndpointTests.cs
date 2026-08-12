@@ -178,11 +178,89 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Edge_history_requires_access_to_repository()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var alice = await SeedUserAsync($"alice-{suffix}");
+        var bob = await SeedUserAsync($"bob-{suffix}");
+
+        var created = await PostAsync(alice, Payload($"eh-{suffix}", $"/repos/local/eh-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/repositories/{id}/edge-history?from=A&to=B");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bob);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_invalid_rules_returns_bad_request_and_stores_nothing()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var created = await AdminPostAsync(Payload($"rules-{suffix}", $"/repos/local/rules-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        var invalid = new { yaml = "rules:\n  - name: \"No constraint\"\n    severity: error\n" };
+        var response = await PutAsync(AdminKey, $"/api/repositories/{id}/rules", invalid);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var db = CreateDb();
+        var repo = await db.Repositories.SingleAsync(r => r.Id == id);
+        Assert.Null(repo.RulesYaml);
+    }
+
+    [Fact]
+    public async Task Put_valid_rules_stores_yaml_and_returns_parsed()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var created = await AdminPostAsync(Payload($"rules-{suffix}", $"/repos/local/rules-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        var yaml = "rules:\n  - name: \"Domain must not depend on Infrastructure\"\n    severity: error\n    deny:\n      from: { path: \"Tessera.Domain\" }\n      to: { path: \"Tessera.Infrastructure\" }\n";
+        var response = await PutAsync(AdminKey, $"/api/repositories/{id}/rules", new { yaml });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var db = CreateDb();
+        var repo = await db.Repositories.SingleAsync(r => r.Id == id);
+        Assert.Equal(yaml, repo.RulesYaml);
+    }
+
+    [Fact]
+    public async Task Rules_endpoints_require_access_to_repository()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var alice = await SeedUserAsync($"alice-{suffix}");
+        var bob = await SeedUserAsync($"bob-{suffix}");
+
+        var created = await PostAsync(alice, Payload($"rules-{suffix}", $"/repos/local/rules-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/repositories/{id}/rules");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bob);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private Task<HttpResponseMessage> AdminPostAsync(object body)
         => PostAsync(AdminKey, body);
 
     private Task<HttpResponseMessage> AdminPostAsync(string path, object body)
         => PostAsync(AdminKey, path, body);
+
+    private async Task<HttpResponseMessage> PutAsync(string token, string path, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await _client.SendAsync(request);
+    }
 
     private Task<HttpResponseMessage> PostAsync(string token, object body)
         => PostAsync(token, "/api/repositories/local", body);

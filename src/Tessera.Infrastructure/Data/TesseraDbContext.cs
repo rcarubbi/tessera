@@ -15,12 +15,14 @@ public class TesseraDbContext : DbContext
     public DbSet<KnowledgeNode> KnowledgeNodes => Set<KnowledgeNode>();
     public DbSet<KnowledgeNodeProvenance> KnowledgeNodeProvenances => Set<KnowledgeNodeProvenance>();
     public DbSet<GraphEdge> GraphEdges => Set<GraphEdge>();
+    public DbSet<EdgeHistory> EdgeHistories => Set<EdgeHistory>();
     public DbSet<NodeEmbedding> NodeEmbeddings => Set<NodeEmbedding>();
     public DbSet<ProjectOverview> ProjectOverviews => Set<ProjectOverview>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
     public DbSet<GitHubUser> GitHubUsers => Set<GitHubUser>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
     public DbSet<AiSettings> AiSettings => Set<AiSettings>();
+    public DbSet<PullRequestReview> PullRequestReviews => Set<PullRequestReview>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +35,7 @@ public class TesseraDbContext : DbContext
             e.HasIndex(r => new { r.Status, r.UpdatedAt });
             e.Property(r => r.CreatedBy).HasMaxLength(256);
             e.HasIndex(r => r.CreatedBy);
+            e.Property(r => r.RulesYaml).HasColumnType("text");
         });
 
         modelBuilder.Entity<GitHubInstallation>(e =>
@@ -93,6 +96,16 @@ public class TesseraDbContext : DbContext
             e.HasIndex(edge => new { edge.SnapshotId, edge.Type });
         });
 
+        modelBuilder.Entity<EdgeHistory>(e =>
+        {
+            e.HasIndex(h => new { h.RepositoryId, h.FromKey, h.ToKey, h.Type }).IsUnique().HasFilter("\"Live\" = true");
+            e.HasIndex(h => new { h.RepositoryId, h.Live });
+            e.HasOne<Repository>()
+                .WithMany()
+                .HasForeignKey(h => h.RepositoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<KnowledgeNodeProvenance>(e =>
         {
             e.HasIndex(p => new { p.NodeId, p.GeneratedAt });
@@ -140,6 +153,17 @@ public class TesseraDbContext : DbContext
             e.HasKey(s => s.Id);
             e.Property(s => s.BaseUrl).HasMaxLength(512);
             e.Property(s => s.ApiKey).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<PullRequestReview>(e =>
+        {
+            e.HasIndex(r => new { r.RepositoryId, r.PrNumber, r.HeadSha }).IsUnique();
+            e.HasIndex(r => new { r.RepositoryId, r.Status });
+            e.Property(r => r.CommentBody).HasColumnType("text");
+            e.HasOne<Repository>()
+                .WithMany()
+                .HasForeignKey(r => r.RepositoryId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

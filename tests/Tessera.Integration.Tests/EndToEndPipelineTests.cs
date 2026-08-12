@@ -527,5 +527,11 @@ public sealed class EndToEndPipelineTests : IDisposable
 
         public Task<IReadOnlyList<GitHubRepoInfo>> ListInstallationRepositoriesAsync(long installationId, string token, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<GitHubRepoInfo>>(Array.Empty<GitHubRepoInfo>());
+
+        public Task<long> PostPrCommentAsync(long installationId, string owner, string repo, int prNumber, string body, CancellationToken ct = default)
+            => Task.FromResult(123L);
+
+        public Task DeletePrCommentAsync(long installationId, string owner, string repo, long commentId, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }

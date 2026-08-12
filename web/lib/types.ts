@@ -19,6 +19,7 @@ export type Repository = {
   totalCount: number;
   errorMessage: string | null;
   cancelRequested: boolean;
+  enablePrComments: boolean;
   analysisStartedAt: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -110,7 +111,21 @@ export type ImpactItem = {
   severity: string;
   trace: string[];
 };
-export type Impact = { entity: string; commitSha: string; items: ImpactItem[] };
+export type ImpactClassification = "test" | "api-contract" | "database-entity" | "other";
+export type ImpactRating = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type ImpactByType = { tests: number; apiContracts: number; databaseEntities: number; other: number };
+export type ClassifiedImpactItem = ImpactItem & { classification: ImpactClassification; reason: string };
+export type ImpactReport = {
+  entity: string;
+  commitSha: string;
+  totalCount: number;
+  directCount: number;
+  indirectCount: number;
+  maxDepth: number;
+  byType: ImpactByType;
+  rating: ImpactRating;
+  items: ClassifiedImpactItem[];
+};
 
 export type ConsumerItem = {
   fromKey: string;
@@ -134,6 +149,90 @@ export type ChainItem = {
   confidence: number;
 };
 export type Chain = { entity: string; commitSha: string; items: ChainItem[] };
+
+export type EdgeHistoryEntry = {
+  type: string;
+  introducedCommit: string;
+  introducedAt: string;
+  ageInDays: number;
+};
+export type EdgeHistory = {
+  from: string;
+  to: string;
+  exists: boolean;
+  commitSha: string;
+  entries: EdgeHistoryEntry[];
+};
+
+export type RuleSeverity = "info" | "warning" | "error";
+export type NodeSelector = {
+  path?: string | null;
+  kind?: string | null;
+};
+export type RuleConstraint = {
+  kind: "deny" | "require";
+  from: NodeSelector;
+  to?: NodeSelector | null;
+};
+export type ArchitectureRule = {
+  name: string;
+  severity: RuleSeverity;
+  constraint: RuleConstraint;
+};
+export type RuleSet = {
+  yaml: string;
+  rules: ArchitectureRule[];
+};
+export type RuleViolation = {
+  ruleName: string;
+  severity: RuleSeverity;
+  fromKey: string;
+  toKey: string;
+  fromPath: string;
+  fromLine: number;
+  toPath: string;
+  toLine: number;
+  edgeType?: string | null;
+  confidence: number;
+  lowConfidence: boolean;
+  isMissingRequirement: boolean;
+};
+export type RuleEvaluation = {
+  commitSha: string;
+  violations: RuleViolation[];
+};
+export type RuleDriftEntry = {
+  ruleName: string;
+  severity: RuleSeverity;
+  fromKey: string;
+  toKey: string;
+  fromPath: string;
+  toPath: string;
+  edgeType?: string | null;
+  introducedCommit: string;
+  isLive: boolean;
+  lowConfidence: boolean;
+};
+export type RuleDrift = {
+  fromCommit: string;
+  toCommit: string;
+  entries: RuleDriftEntry[];
+};
+
+export type PrReviewStatus = "Queued" | "Reviewed" | "Posted" | "Failed";
+export type PrReview = {
+  id: string;
+  prNumber: number;
+  headSha: string;
+  baseSha: string;
+  status: PrReviewStatus;
+  commentId?: number | null;
+  commentBody?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PrReviewList = { items: PrReview[] };
 
 export type AiSettings = {
   providerName: string;
