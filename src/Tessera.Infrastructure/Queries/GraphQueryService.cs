@@ -7,10 +7,10 @@ namespace Tessera.Infrastructure.Queries;
 public record ImpactItem(string Key, string Symbol, string Path, int Line, int Depth, string Severity, string[] Trace);
 public sealed record ImpactResult(string Entity, string CommitSha, IReadOnlyList<ImpactItem> Items);
 
-public sealed record ConsumerItem(string FromKey, string FromSymbol, string Path, int Line, string Type, string? Evidence, double Confidence);
+public sealed record ConsumerItem(string FromKey, string FromSymbol, string Path, int Line, string Type, string? Evidence, double Confidence, string Classification, string FactSource, string Tier);
 public sealed record ConsumerResult(string Entity, string CommitSha, IReadOnlyList<ConsumerItem> Items);
 
-public sealed record ChainItem(string Key, string Symbol, string Path, int Line, int Depth, string Type, string? Evidence, double Confidence);
+public sealed record ChainItem(string Key, string Symbol, string Path, int Line, int Depth, string Type, string? Evidence, double Confidence, string Classification, string FactSource, string Tier);
 public sealed record ChainResult(string Entity, string CommitSha, IReadOnlyList<ChainItem> Items);
 
 public sealed record DiffNodeChange(string Change, string Key, string Symbol, string? Summary);
@@ -40,8 +40,24 @@ public sealed record GraphNodeItem(
     string SemanticHash,
     string? Content,
     string? ClassDiagram,
-    string? SequenceDiagram);
-public sealed record GraphEdgeItem(string From, string To, string Type, string? Evidence, double Confidence, bool IsStatic);
+    string? SequenceDiagram,
+    string Classification,
+    string FactSource,
+    string Tier,
+    string CommitSha,
+    string? Model,
+    string? PromptVersion,
+    DateTimeOffset AnalyzedAt);
+public sealed record GraphEdgeItem(
+    string From,
+    string To,
+    string Type,
+    string? Evidence,
+    double Confidence,
+    bool IsStatic,
+    string Classification,
+    string FactSource,
+    string Tier);
 public sealed record GraphResult(string CommitSha, IReadOnlyList<GraphNodeItem> Nodes, IReadOnlyList<GraphEdgeItem> Edges);
 
 public sealed class SnapshotNotFoundException(Guid repositoryId, string? commitSha)
@@ -119,7 +135,8 @@ public sealed class GraphQueryService(TesseraDbContext db)
             .Select(e =>
             {
                 nodes.TryGetValue(e.FromKey, out var node);
-                return new ConsumerItem(e.FromKey, node?.Symbol ?? e.FromKey, node?.Path ?? "", node?.StartLine ?? 0, e.Type.ToString(), e.Evidence, e.Confidence);
+                var evidence = EvidenceClassifier.ClassifyEdge(e);
+                return new ConsumerItem(e.FromKey, node?.Symbol ?? e.FromKey, node?.Path ?? "", node?.StartLine ?? 0, e.Type.ToString(), e.Evidence, e.Confidence, evidence.Classification, evidence.FactSource, evidence.Tier);
             })
             .ToList();
 
@@ -165,7 +182,8 @@ public sealed class GraphQueryService(TesseraDbContext db)
                 }
                 var depth = current.Depth + 1;
                 nodes.TryGetValue(edge.ToKey, out var node);
-                items.Add(new ChainItem(edge.ToKey, node?.Symbol ?? edge.ToKey, node?.Path ?? "", node?.StartLine ?? 0, depth, edge.Type.ToString(), edge.Evidence, edge.Confidence));
+                var evidence = EvidenceClassifier.ClassifyEdge(edge);
+                items.Add(new ChainItem(edge.ToKey, node?.Symbol ?? edge.ToKey, node?.Path ?? "", node?.StartLine ?? 0, depth, edge.Type.ToString(), edge.Evidence, edge.Confidence, evidence.Classification, evidence.FactSource, evidence.Tier));
                 queue.Enqueue((edge.ToKey, depth));
             }
         }
@@ -295,6 +313,8 @@ public sealed class GraphQueryService(TesseraDbContext db)
         string? module = null,
         int? maxDepth = null,
         string? commitSha = null,
+        string? source = null,
+        string? tier = null,
         CancellationToken ct = default)
     {
         var (nodes, edges) = await LoadAsync(repositoryId, commitSha, ct);
@@ -313,18 +333,30 @@ public sealed class GraphQueryService(TesseraDbContext db)
         }
 
         var nodeItems = (included is null ? nodes.Values : nodes.Values.Where(n => included.Contains(n.Key)))
+            .Where(n => MatchesFilter(EvidenceClassifier.ClassifyNode(n), source, tier))
             .OrderBy(n => n.Key, StringComparer.Ordinal)
-            .Select(n => new GraphNodeItem(
-                n.Key, n.Symbol, n.Path, n.Kind.ToString(), n.Language,
-                n.StartLine, n.EndLine, n.Confidence, ReviewStatusLabel.Get(n.ReviewStatus),
-                n.SemanticHash, n.Content, n.ClassDiagram, n.SequenceDiagram))
+            .Select(n =>
+            {
+                var evidence = EvidenceClassifier.ClassifyNode(n);
+                return new GraphNodeItem(
+                    n.Key, n.Symbol, n.Path, n.Kind.ToString(), n.Language,
+                    n.StartLine, n.EndLine, n.Confidence, ReviewStatusLabel.Get(n.ReviewStatus),
+                    n.SemanticHash, n.Content, n.ClassDiagram, n.SequenceDiagram,
+                    evidence.Classification, evidence.FactSource, evidence.Tier,
+                    n.CommitSha, n.Model, n.PromptVersion, n.AnalyzedAt);
+            })
             .ToList();
 
         var edgeItems = edges
             .Where(e => included is null || (included.Contains(e.FromKey) && included.Contains(e.ToKey)))
+            .Where(e => MatchesFilter(EvidenceClassifier.ClassifyEdge(e), source, tier))
             .OrderBy(e => e.FromKey, StringComparer.Ordinal)
             .ThenBy(e => e.ToKey, StringComparer.Ordinal)
-            .Select(e => new GraphEdgeItem(e.FromKey, e.ToKey, e.Type.ToString(), e.Evidence, e.Confidence, e.IsStatic))
+            .Select(e =>
+            {
+                var evidence = EvidenceClassifier.ClassifyEdge(e);
+                return new GraphEdgeItem(e.FromKey, e.ToKey, e.Type.ToString(), e.Evidence, e.Confidence, e.IsStatic, evidence.Classification, evidence.FactSource, evidence.Tier);
+            })
             .ToList();
 
         return new GraphResult(await ResolveCommitAsync(repositoryId, commitSha, ct), nodeItems, edgeItems);
@@ -550,6 +582,29 @@ public sealed class GraphQueryService(TesseraDbContext db)
 
     private static string? FirstLine(string? content) =>
         content?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+
+    private static bool MatchesFilter(EvidenceClassification evidence, string? source, string? tier)
+    {
+        if (!string.IsNullOrEmpty(source))
+        {
+            var sourceMatches = source switch
+            {
+                "facts" => evidence.Classification == "fact",
+                "inferences" => evidence.Classification == "inference",
+                _ => true
+            };
+            if (!sourceMatches)
+            {
+                return false;
+            }
+        }
+        if (!string.IsNullOrEmpty(tier)
+            && !string.Equals(evidence.Tier, tier, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        return true;
+    }
 
     private static string Quote(string key) => $"\"{EscapeLabel(key)}\"";
 

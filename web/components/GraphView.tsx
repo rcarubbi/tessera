@@ -68,6 +68,8 @@ export default function GraphView({
   const [edgeTypes, setEdgeTypes] = useState<Set<string>>(new Set());
   const [expandDepth, setExpandDepth] = useState(1);
   const [showMethods, setShowMethods] = useState(true);
+  const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [tierFilter, setTierFilter] = useState<string>("");
   const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
 
   const commitParam = commit ? `&commit=${encodeURIComponent(commit)}` : "";
@@ -117,18 +119,25 @@ export default function GraphView({
     return graph.nodes.filter(
       (n) =>
         (!module || n.path.startsWith(module)) &&
-        (showMethods || (n.kind !== "Method" && n.kind !== "Function")),
+        (showMethods || (n.kind !== "Method" && n.kind !== "Function")) &&
+        (!sourceFilter || n.classification === sourceFilter) &&
+        (!tierFilter || n.tier === tierFilter),
     );
-  }, [graph, module, showMethods]);
+  }, [graph, module, showMethods, sourceFilter, tierFilter]);
 
   const visibleKeys = useMemo(() => new Set(visibleNodes.map((n) => n.key)), [visibleNodes]);
 
   const visibleEdges = useMemo(() => {
     if (!graph) return [] as GraphEdge[];
     return graph.edges.filter(
-      (e) => edgeTypes.has(e.type) && visibleKeys.has(e.from) && visibleKeys.has(e.to),
+      (e) =>
+        edgeTypes.has(e.type) &&
+        visibleKeys.has(e.from) &&
+        visibleKeys.has(e.to) &&
+        (!sourceFilter || e.classification === sourceFilter) &&
+        (!tierFilter || e.tier === tierFilter),
     );
-  }, [graph, edgeTypes, visibleKeys]);
+  }, [graph, edgeTypes, visibleKeys, sourceFilter, tierFilter]);
 
   const nodes = useMemo(
     () =>
@@ -147,6 +156,7 @@ export default function GraphView({
         id: `e-${i}`,
         source: e.from,
         target: e.to,
+        fill: e.classification === "inference" ? "#d29922" : "#2d333b",
         data: e,
       })),
     [visibleEdges],
@@ -278,6 +288,23 @@ export default function GraphView({
                 <option value={3}>3 hops</option>
               </select>
             </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Source</span>
+              <select className={select} value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="fact">Facts only</option>
+                <option value="inference">Inferences only</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Confidence</span>
+              <select className={select} value={tierFilter} onChange={(e) => setTierFilter(e.target.value)}>
+                <option value="">All</option>
+                <option value="verified">Verified</option>
+                <option value="accepted">Accepted</option>
+                <option value="low-confidence">Low confidence</option>
+              </select>
+            </label>
             <label className="flex cursor-pointer items-center gap-2 pb-1 text-[13px] select-none">
               <span className="relative inline-flex">
                 <input
@@ -391,6 +418,10 @@ export default function GraphView({
         <div className="border-t border-border bg-inset px-2.5 py-1.5 text-xs text-dim">
           {graph.nodes.length} nodes · {graph.edges.length} edges ·{" "}
           {selectedKey ? `focusing ${selectedKey}` : "drag to pan · wheel to zoom · click a node to inspect"}
+          <span className="ml-3 inline-flex items-center gap-3">
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-[#2d333b]" /> fact</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-[#d29922]" /> inference</span>
+          </span>
         </div>
       </div>
     </div>

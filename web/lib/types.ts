@@ -52,6 +52,13 @@ export type GraphNode = {
   content?: string | null;
   classDiagram?: string | null;
   sequenceDiagram?: string | null;
+  classification?: string;
+  factSource?: string;
+  tier?: string;
+  commitSha?: string;
+  model?: string | null;
+  promptVersion?: string | null;
+  analyzedAt?: string;
 };
 
 export type GraphEdge = {
@@ -61,6 +68,9 @@ export type GraphEdge = {
   evidence?: string | null;
   confidence: number;
   isStatic: boolean;
+  classification?: string;
+  factSource?: string;
+  tier?: string;
 };
 
 export type Graph = {
@@ -135,6 +145,9 @@ export type ConsumerItem = {
   type: string;
   evidence?: string | null;
   confidence: number;
+  classification?: string;
+  factSource?: string;
+  tier?: string;
 };
 export type Consumers = { entity: string; commitSha: string; items: ConsumerItem[] };
 
@@ -147,6 +160,9 @@ export type ChainItem = {
   type: string;
   evidence?: string | null;
   confidence: number;
+  classification?: string;
+  factSource?: string;
+  tier?: string;
 };
 export type Chain = { entity: string; commitSha: string; items: ChainItem[] };
 

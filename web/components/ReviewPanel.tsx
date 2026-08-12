@@ -57,6 +57,10 @@ export default function ReviewPanel({
       <div className="mb-3 text-dim">
         Review queue for commit <code>{review.commitSha.slice(0, 10)}</code> — {review.items.length} node(s) flagged.
       </div>
+      <div className="mb-3 rounded-lg border border-border bg-inset px-3 py-2 text-xs text-dim">
+        Accepting a node reviews it: a low-confidence inference becomes <span className="text-fg">verified</span> in the
+        graph's confidence tier.
+      </div>
       {error && <div className="mb-3 text-danger">{error}</div>}
       {review.items.length === 0 && <div className={card}>Queue is empty. All nodes reviewed.</div>}
       {review.items.map((item) => (
