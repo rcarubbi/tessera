@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import ImpactPanel from "@/components/ImpactPanel";
 import Mermaid from "@/components/Mermaid";
 import Markdown from "@/components/Markdown";
 import { apiGet } from "@/lib/api";
-import type { Chain, Consumers, Graph, GraphNode } from "@/lib/types";
+import type { Chain, Consumers, EdgeHistory, Graph, GraphNode } from "@/lib/types";
 import { badge, badgeGreen, badgeRed, badgeYellow, btn, btnSmall, card, path } from "@/lib/ui";
 
 export default function EntityPanel({
@@ -13,16 +14,21 @@ export default function EntityPanel({
   nodeKey,
   onClose,
   onFocus,
+  onOpenDiff,
 }: {
   repoId: string;
   commit: string | null;
   nodeKey: string;
   onClose: () => void;
   onFocus: (key: string) => void;
+  onOpenDiff?: (from: string, to: string) => void;
 }) {
   const [node, setNode] = useState<GraphNode | null>(null);
   const [consumers, setConsumers] = useState<Consumers | null>(null);
   const [chain, setChain] = useState<Chain | null>(null);
+  const [history, setHistory] = useState<EdgeHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +51,15 @@ export default function EntityPanel({
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [repoId, commit, nodeKey, commitParam]);
+
+  const showHistory = useCallback((from: string, to: string) => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    apiGet<EdgeHistory>(`/api/repositories/${repoId}/edge-history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+      .then(setHistory)
+      .catch((e) => setHistoryError(e.message))
+      .finally(() => setHistoryLoading(false));
+  }, [repoId]);
 
   const close = useCallback(onClose, [onClose]);
 
@@ -108,7 +123,10 @@ export default function EntityPanel({
                   <button type="button" className="cursor-pointer text-accent hover:underline" onClick={() => onFocus(c.fromKey)}>
                     {c.fromSymbol}
                   </button>{" "}
-                  <span className={path}>{c.path}:{c.line}</span>
+                  <span className={path}>{c.path}:{c.line}</span>{" "}
+                  <button type="button" className="cursor-pointer text-xs text-dim hover:text-accent" onClick={() => showHistory(c.fromKey, nodeKey)}>
+                    why?
+                  </button>
                 </li>
               ))}
             </ul>
@@ -128,7 +146,45 @@ export default function EntityPanel({
                   <button type="button" className="cursor-pointer text-accent hover:underline" onClick={() => onFocus(c.key)}>
                     {c.symbol}
                   </button>{" "}
-                  <span className={path}>{c.path}:{c.line}</span>
+                  <span className={path}>{c.path}:{c.line}</span>{" "}
+                  <button type="button" className="cursor-pointer text-xs text-dim hover:text-accent" onClick={() => showHistory(nodeKey, c.key)}>
+                    why?
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {node && (
+        <div className="mt-4">
+          <ImpactPanel repoId={repoId} commit={commit} entityKey={node.key} onFocus={onFocus} />
+        </div>
+      )}
+
+      {historyError && <div className="mt-4 text-danger">{historyError}</div>}
+      {historyLoading && <div className="mt-4 text-dim">Loading history…</div>}
+      {history && !historyLoading && (
+        <div className="mt-4">
+          <div className="font-semibold text-dim">
+            Dependency history: <span className={path}>{history.from} → {history.to}</span>
+          </div>
+          {!history.exists && <div className="mt-1 text-xs text-warn">No longer exists at {history.commitSha.slice(0, 10)}.</div>}
+          {history.entries.length === 0 ? (
+            <div className="mt-1 text-dim">No recorded history for this dependency.</div>
+          ) : (
+            <ul className="mt-1 space-y-1">
+              {history.entries.map((h, i) => (
+                <li key={i} className="text-sm">
+                  <span className="font-mono">{h.introducedCommit.slice(0, 10)}</span>{" "}
+                  <span className="text-dim">{new Date(h.introducedAt).toLocaleDateString()}</span>{" "}
+                  <span className="text-dim">({h.type}) · {h.ageInDays}d</span>
+                  {onOpenDiff && h.introducedCommit !== history.commitSha && (
+                    <button type="button" className="ml-1 cursor-pointer text-accent hover:underline" onClick={() => onOpenDiff(h.introducedCommit, history.commitSha)}>
+                      diff →
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

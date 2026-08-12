@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
 using Tessera.Infrastructure.Data;
+using Tessera.Infrastructure.Reviews;
 using Tessera.Worker.Pipeline;
 
 namespace Tessera.Worker;
@@ -79,5 +82,31 @@ public sealed class JobProcessor(
 
         var pipeline = scope.ServiceProvider.GetRequiredService<AnalysisPipeline>();
         await pipeline.ProcessAsync(repo, ct);
+
+        await ProcessPendingPrReviewsAsync(scope, repo, ct);
+    }
+
+    private async Task ProcessPendingPrReviewsAsync(IServiceScope scope, Repository repo, CancellationToken ct)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
+        var prReviewService = scope.ServiceProvider.GetRequiredService<PrReviewService>();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<AnalysisPipelineOptions>>();
+        var workDir = Path.Combine(options.Value.WorkRoot, "repos", repo.FullName);
+
+        var pending = await db.PullRequestReviews.AsNoTracking()
+            .Where(r => r.RepositoryId == repo.Id
+                && r.HeadSha == repo.LastProcessedCommit
+                && (r.Status == PrReviewStatus.Queued || r.Status == PrReviewStatus.Failed))
+            .ToListAsync(ct);
+
+        foreach (var review in pending)
+        {
+            var tracked = await db.PullRequestReviews.FirstAsync(r => r.Id == review.Id, ct);
+            if (tracked.Status is not (PrReviewStatus.Queued or PrReviewStatus.Failed))
+            {
+                continue;
+            }
+            await prReviewService.ProcessAsync(repo, tracked, workDir, ct);
+        }
     }
 }

@@ -242,6 +242,22 @@ public sealed class AnalysisPipeline(
             return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
         }
 
+        var previousSnapshot = await ResolvePreviousSnapshotAsync(repo, ct);
+        if (previousSnapshot is null)
+        {
+            return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
+        }
+
+        var nodes = await db.KnowledgeNodes
+            .AsNoTracking()
+            .Where(n => n.SnapshotId == previousSnapshot.Id)
+            .ToListAsync(ct);
+
+        return nodes.ToDictionary(n => n.Key, n => n, StringComparer.Ordinal);
+    }
+
+    private async Task<Snapshot?> ResolvePreviousSnapshotAsync(Repository repo, CancellationToken ct)
+    {
         var commit = repo.LastProcessedCommit;
         if (commit is null)
         {
@@ -257,25 +273,13 @@ public sealed class AnalysisPipeline(
 
         if (commit is null)
         {
-            return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
+            return null;
         }
 
-        var previousSnapshot = await db.Snapshots
+        return await db.Snapshots
             .Where(s => s.RepositoryId == repo.Id && s.CommitSha == commit)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(ct);
-
-        if (previousSnapshot is null)
-        {
-            return new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
-        }
-
-        var nodes = await db.KnowledgeNodes
-            .AsNoTracking()
-            .Where(n => n.SnapshotId == previousSnapshot.Id)
-            .ToListAsync(ct);
-
-        return nodes.ToDictionary(n => n.Key, n => n, StringComparer.Ordinal);
     }
 
     private async Task<Dictionary<string, AiContent>> BuildAiContentAsync(
@@ -369,6 +373,8 @@ public sealed class AnalysisPipeline(
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
+        var previousSnapshot = await ResolvePreviousSnapshotAsync(repo, ct);
+
         var priorSnapshotIds = await db.Snapshots
             .Where(s => s.RepositoryId == repo.Id && s.CommitSha == head)
             .Select(s => s.Id)
@@ -458,6 +464,8 @@ public sealed class AnalysisPipeline(
             }).ToList()
         });
         await store.PutAsync($"snapshots/{composed.RootHash}.json", snapshotJson, ct);
+
+        await EdgeHistoryUpdater.UpdateAsync(db, repo.Id, snapshotId, head, composed.Edges, previousSnapshot?.Id, ct);
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

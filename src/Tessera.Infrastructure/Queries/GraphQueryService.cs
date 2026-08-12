@@ -4,7 +4,7 @@ using Tessera.Infrastructure.Data;
 
 namespace Tessera.Infrastructure.Queries;
 
-public sealed record ImpactItem(string Key, string Symbol, string Path, int Line, int Depth, string Severity, string[] Trace);
+public record ImpactItem(string Key, string Symbol, string Path, int Line, int Depth, string Severity, string[] Trace);
 public sealed record ImpactResult(string Entity, string CommitSha, IReadOnlyList<ImpactItem> Items);
 
 public sealed record ConsumerItem(string FromKey, string FromSymbol, string Path, int Line, string Type, string? Evidence, double Confidence);
@@ -22,6 +22,10 @@ public sealed record DiffResult(
     IReadOnlyList<DiffNodeChange> Nodes,
     IReadOnlyList<DiffEdgeChange> Edges,
     IReadOnlyList<DiffCycle> Cycles);
+
+public sealed record EdgeHistoryEntry(string Type, string IntroducedCommit, DateTimeOffset IntroducedAt, int AgeInDays);
+public sealed record EdgeHistoryResult(string From, string To, bool Exists, string CommitSha, IReadOnlyList<EdgeHistoryEntry> Entries);
+public sealed record EdgeChangesResult(string FromCommit, string ToCommit, IReadOnlyList<DiffEdgeChange> Edges);
 
 public sealed record GraphNodeItem(
     string Key,
@@ -180,7 +184,6 @@ public sealed class GraphQueryService(TesseraDbContext db)
             ?? throw new SnapshotNotFoundException(repositoryId, fromCommit);
         var to = await GetSnapshotAsync(repositoryId, toCommit, ct)
             ?? throw new SnapshotNotFoundException(repositoryId, toCommit);
-
         var fromNodes = await NodesByKeyAsync(from.Id, ct);
         var toNodes = await NodesByKeyAsync(to.Id, ct);
         var fromEdges = await EdgesAsync(from.Id, ct);
@@ -223,6 +226,56 @@ public sealed class GraphQueryService(TesseraDbContext db)
         var cycles = FindNewCycles(toEdges, fromEdgeSet);
 
         return new DiffResult(fromCommit, toCommit, nodeChanges, edgeChanges, cycles);
+    }
+
+    public async Task<EdgeHistoryResult> EdgeHistoryAsync(
+        Guid repositoryId,
+        string fromKey,
+        string toKey,
+        string? commitSha = null,
+        CancellationToken ct = default)
+    {
+        var snapshot = await GetSnapshotAsync(repositoryId, commitSha, ct)
+            ?? throw new SnapshotNotFoundException(repositoryId, commitSha);
+
+        var exists = await db.GraphEdges.AsNoTracking()
+            .AnyAsync(e => e.SnapshotId == snapshot.Id && e.FromKey == fromKey && e.ToKey == toKey, ct);
+
+        var rows = await db.EdgeHistories.AsNoTracking()
+            .Where(h => h.RepositoryId == repositoryId && h.FromKey == fromKey && h.ToKey == toKey)
+            .OrderBy(h => h.IntroducedAt)
+            .ToListAsync(ct);
+
+        IReadOnlyList<EdgeHistory> applicable;
+        if (commitSha is null)
+        {
+            var live = rows.Where(h => h.Live).ToList();
+            applicable = live.Count > 0 ? live : rows.TakeLast(1).ToList();
+        }
+        else
+        {
+            applicable = rows.Where(h => h.IntroducedAt <= snapshot.CreatedAt).ToList();
+        }
+
+        var entries = applicable
+            .Select(h => new EdgeHistoryEntry(
+                h.Type.ToString(),
+                h.IntroducedCommitSha,
+                h.IntroducedAt,
+                (int)(DateTimeOffset.UtcNow - h.IntroducedAt).TotalDays))
+            .ToList();
+
+        return new EdgeHistoryResult(fromKey, toKey, exists, snapshot.CommitSha, entries);
+    }
+
+    public async Task<EdgeChangesResult> EdgeChangesAsync(
+        Guid repositoryId,
+        string fromSha,
+        string toSha,
+        CancellationToken ct = default)
+    {
+        var diff = await DiffAsync(repositoryId, fromSha, toSha, ct);
+        return new EdgeChangesResult(diff.FromCommit, diff.ToCommit, diff.Edges);
     }
 
     internal static IReadOnlyList<DiffCycle> FindNewCycles(List<GraphEdge> toEdges, HashSet<string> fromEdgeSet)

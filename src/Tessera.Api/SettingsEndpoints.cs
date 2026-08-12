@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Auth;
+using Tessera.Infrastructure.Data;
 
 namespace Tessera.Api;
 
@@ -7,6 +9,28 @@ public static class SettingsEndpoints
 {
     public static void MapSettingsEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapPut("/api/repositories/{repositoryId:guid}/settings", async (
+            Guid repositoryId,
+            RepoSettingsRequest request,
+            HttpContext context,
+            TesseraDbContext db,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+
+            var repo = await db.Repositories.FirstOrDefaultAsync(r => r.Id == repositoryId, ct);
+            if (repo is null)
+            {
+                return Results.NotFound(new { error = "Repository not found" });
+            }
+
+            repo.EnablePrComments = request.EnablePrComments;
+            repo.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(repo);
+        });
+
         app.MapGet("/api/settings/ai", async (
             HttpContext context,
             AiSettingsService settings,
@@ -46,3 +70,5 @@ public static class SettingsEndpoints
         });
     }
 }
+
+public sealed record RepoSettingsRequest(bool EnablePrComments);

@@ -29,6 +29,18 @@ public static class ReviewEndpoints
             }
         });
 
+        app.MapGet("/api/repositories/{repositoryId:guid}/pr-reviews", async (
+            Guid repositoryId,
+            HttpContext context,
+            TesseraDbContext db,
+            PrReviewService prReviews,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+            return Results.Ok(await prReviews.ListAsync(repositoryId, ct));
+        });
+
         app.MapPost("/api/repositories/{repositoryId:guid}/review/{nodeId:guid}/accept", async (
             Guid repositoryId,
             Guid nodeId,

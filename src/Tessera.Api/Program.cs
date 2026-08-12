@@ -5,6 +5,7 @@ using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
 using Tessera.Infrastructure;
 using Tessera.Infrastructure.Ai;
+using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Auth;
 using Tessera.Infrastructure.Chat;
 using Tessera.Infrastructure.Data;
@@ -22,6 +23,7 @@ builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.AddSingleton<IGitHubAppClient>(sp =>
     new GitHubAppClient(sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IOptions<GitHubOptions>>()));
+builder.Services.AddSingleton<IGitClient, GitClient>();
 builder.Services.AddSingleton<IGitHubOAuthClient>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<GitHubOAuthOptions>>().Value;
@@ -33,10 +35,13 @@ builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IProviderRegistry>(sp => sp.GetRequiredService<ProviderRegistry>());
 builder.Services.AddScoped<AiSettingsService>();
 builder.Services.AddScoped<GraphQueryService>();
+builder.Services.AddScoped<ImpactAnalysisService>();
+builder.Services.AddScoped<ArchitectureRuleService>();
 builder.Services.AddScoped<AccessControlService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IArchitectureChatService, ArchitectureChatService>();
 builder.Services.AddScoped<ReviewService>();
+builder.Services.AddScoped<PrReviewService>();
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
 {
@@ -268,6 +273,7 @@ app.MapQueryEndpoints();
 app.MapChatEndpoints();
 app.MapReviewEndpoints();
 app.MapSettingsEndpoints();
+app.MapRuleEndpoints();
 
 app.Run();
 
