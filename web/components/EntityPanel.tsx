@@ -5,8 +5,8 @@ import ImpactPanel from "@/components/ImpactPanel";
 import Mermaid from "@/components/Mermaid";
 import Markdown from "@/components/Markdown";
 import { apiGet } from "@/lib/api";
-import type { Chain, Consumers, EdgeHistory, Graph, GraphNode } from "@/lib/types";
-import { badge, badgeGreen, badgeRed, badgeYellow, btn, btnSmall, card, path } from "@/lib/ui";
+import type { Chain, ConsumerItem, Consumers, EdgeHistory, Graph, GraphNode } from "@/lib/types";
+import { badge, badgeGreen, badgeOrange, badgeRed, badgeYellow, btn, btnSmall, card, path } from "@/lib/ui";
 
 export default function EntityPanel({
   repoId,
@@ -83,13 +83,32 @@ export default function EntityPanel({
       {node && (
         <div className="mt-3">
           <div className="flex flex-wrap gap-2">
+            <span className={`${badge} ${node.classification === "inference" ? badgeOrange : badgeGreen}`}>
+              {node.classification === "inference"
+                ? `inference · ${node.factSource ?? "Inference"}`
+                : `fact · ${node.factSource ?? "AST"}`}
+            </span>
             <span className={badge}>{node.kind}</span>
             <span className={badge}>{node.language}</span>
             <span className={`${badge} ${confidenceTone(node.confidence)}`}>confidence {node.confidence.toFixed(2)}</span>
+            <span className={`${badge} ${tierTone(node.tier)}`}>{node.tier ?? "—"}</span>
             <span className={`${badge} ${reviewTone(node.reviewStatus)}`}>{node.reviewStatus.replace("_", " ")}</span>
           </div>
           <div className={`${path} mt-2`}>
             {node.path}:{node.line}–{node.endLine}
+          </div>
+          <div className="mt-3 rounded-lg border border-border bg-inset px-3 py-2.5 text-xs">
+            <div className="mb-1.5 font-semibold text-dim">Provenance</div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
+              <dt className="text-dim">Classification</dt><dd>{node.classification ?? "—"}</dd>
+              <dt className="text-dim">Source</dt><dd>{node.factSource ?? "—"}</dd>
+              <dt className="text-dim">Tier</dt><dd>{node.tier ?? "—"}</dd>
+              <dt className="text-dim">Confidence</dt><dd>{node.confidence.toFixed(2)}</dd>
+              <dt className="text-dim">Commit</dt><dd className="font-mono">{node.commitSha?.slice(0, 10) || "—"}</dd>
+              <dt className="text-dim">Model</dt><dd>{node.model ?? "—"}</dd>
+              <dt className="text-dim">Prompt version</dt><dd>{node.promptVersion ?? "—"}</dd>
+              <dt className="text-dim">Analyzed</dt><dd>{node.analyzedAt ? new Date(node.analyzedAt).toLocaleString() : "—"}</dd>
+            </dl>
           </div>
           {node.content && (
             <div className="markdown mt-3 border-t border-border pt-3">
@@ -123,7 +142,9 @@ export default function EntityPanel({
                   <button type="button" className="cursor-pointer text-accent hover:underline" onClick={() => onFocus(c.fromKey)}>
                     {c.fromSymbol}
                   </button>{" "}
+                  <EdgeChip item={c} />{" "}
                   <span className={path}>{c.path}:{c.line}</span>{" "}
+                  {c.evidence && <span className="font-mono text-xs text-dim">{c.evidence}</span>}{" "}
                   <button type="button" className="cursor-pointer text-xs text-dim hover:text-accent" onClick={() => showHistory(c.fromKey, nodeKey)}>
                     why?
                   </button>
@@ -146,7 +167,9 @@ export default function EntityPanel({
                   <button type="button" className="cursor-pointer text-accent hover:underline" onClick={() => onFocus(c.key)}>
                     {c.symbol}
                   </button>{" "}
+                  <EdgeChip item={c} />{" "}
                   <span className={path}>{c.path}:{c.line}</span>{" "}
+                  {c.evidence && <span className="font-mono text-xs text-dim">{c.evidence}</span>}{" "}
                   <button type="button" className="cursor-pointer text-xs text-dim hover:text-accent" onClick={() => showHistory(nodeKey, c.key)}>
                     why?
                   </button>
@@ -197,6 +220,26 @@ export default function EntityPanel({
 
 function confidenceTone(c: number) {
   return c < 0.7 ? badgeYellow : badgeGreen;
+}
+
+function tierTone(tier?: string) {
+  switch (tier) {
+    case "low-confidence":
+      return badgeYellow;
+    case "verified":
+      return badgeGreen;
+    default:
+      return "";
+  }
+}
+
+function EdgeChip({ item }: { item: { classification?: string; factSource?: string } }) {
+  const isInference = item.classification === "inference";
+  return (
+    <span className={`${badge} ${isInference ? badgeOrange : badgeGreen}`}>
+      {isInference ? `inference · ${item.factSource ?? "Inference"}` : "fact"}
+    </span>
+  );
 }
 
 function reviewTone(s: string) {

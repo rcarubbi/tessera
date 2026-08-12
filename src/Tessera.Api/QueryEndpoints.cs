@@ -223,10 +223,36 @@ public static class QueryEndpoints
                     n.StartLine,
                     n.EndLine,
                     n.Confidence,
-                    ReviewStatus = n.ReviewStatus.ToString(),
+                    n.ReviewStatus,
+                    n.CommitSha,
+                    n.Model,
+                    n.PromptVersion,
+                    n.AnalyzedAt
                 })
                 .ToListAsync(ct);
-            return Results.Ok(nodes);
+            return Results.Ok(nodes.Select(n =>
+            {
+                var evidence = EvidenceClassifier.ClassifyNode(n.Model, n.Confidence, n.ReviewStatus);
+                return new
+                {
+                    n.Key,
+                    n.Symbol,
+                    n.Kind,
+                    n.Language,
+                    n.Path,
+                    StartLine = n.StartLine,
+                    EndLine = n.EndLine,
+                    n.Confidence,
+                    ReviewStatus = n.ReviewStatus.ToString(),
+                    n.CommitSha,
+                    n.Model,
+                    n.PromptVersion,
+                    n.AnalyzedAt,
+                    evidence.Classification,
+                    evidence.FactSource,
+                    evidence.Tier
+                };
+            }));
         });
 
         app.MapGet("/api/repositories/{repositoryId:guid}/graph", async (
@@ -235,6 +261,8 @@ public static class QueryEndpoints
             string? module,
             int? maxDepth,
             string? commit,
+            string? source,
+            string? tier,
             HttpContext context,
             TesseraDbContext db,
             GraphQueryService queries,
@@ -244,7 +272,7 @@ public static class QueryEndpoints
             if (guarded is not null) return guarded;
             try
             {
-                return Results.Ok(await queries.GraphAsync(repositoryId, entity, module, maxDepth, commit, ct));
+                return Results.Ok(await queries.GraphAsync(repositoryId, entity, module, maxDepth, commit, source, tier, ct));
             }
             catch (SnapshotNotFoundException ex)
             {
