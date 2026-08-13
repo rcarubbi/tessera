@@ -10,12 +10,14 @@ public static class SemanticHasher
 {
     public static string Compute(string content, IEnumerable<ChildHash> children)
     {
-        var payload = new StringBuilder(content);
-        foreach (var child in children.OrderBy(c => c.Key, StringComparer.Ordinal))
-        {
-            payload.Append('\n').Append(child.Key).Append('|').Append(child.EdgeType).Append('|').Append(child.Hash);
-        }
-        return Hash(payload.ToString());
+        var orderedChildren = children
+            .OrderBy(c => c.Key, StringComparer.Ordinal)
+            .ThenBy(c => c.EdgeType, StringComparer.Ordinal)
+            .ThenBy(c => c.Hash, StringComparer.Ordinal)
+            .Select(c => new[] { c.Key, c.EdgeType, c.Hash })
+            .ToList();
+        var payload = JsonSerializer.Serialize(new { content, children = orderedChildren });
+        return Hash(payload);
     }
 
     public static string ComputeSnapshotRoot(IEnumerable<string> nodeHashes)
@@ -31,7 +33,7 @@ public static class SemanticHasher
         return Convert.ToHexStringLower(digest);
     }
 
-    public static string StableJson(object value)
+    public static string HashStableJson(object value)
     {
         var json = JsonSerializer.Serialize(value);
         return Hash(json);

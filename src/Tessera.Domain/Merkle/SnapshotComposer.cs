@@ -20,6 +20,7 @@ public sealed class ComposedSnapshot
     public List<KnowledgeNode> Nodes { get; } = new();
     public List<GraphEdge> Edges { get; } = new();
     public string RootHash { get; set; } = "";
+    public List<string> Diagnostics { get; } = new();
 }
 
 public static class SnapshotComposer
@@ -34,6 +35,8 @@ public static class SnapshotComposer
         IReadOnlyDictionary<string, KnowledgeNode> previousNodes,
         IReadOnlyDictionary<string, AiContent> aiContent)
     {
+        var diagnostics = ParseResultValidator.Validate(parse);
+
         var nodes = new Dictionary<string, KnowledgeNode>(StringComparer.Ordinal);
         var aiKeys = new HashSet<string>(aiContent.Keys, StringComparer.Ordinal);
 
@@ -102,7 +105,9 @@ public static class SnapshotComposer
             nodes[entity.Key] = node;
         }
 
-        var childGroups = parse.Relationships
+        var normalizedRelationships = NormalizeRelationships(parse.Relationships);
+
+        var childGroups = normalizedRelationships
             .GroupBy(r => r.From, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
 
@@ -125,14 +130,9 @@ public static class SnapshotComposer
         }
 
         var edges = new List<GraphEdge>();
-        var edgeKeys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var rel in parse.Relationships)
+        foreach (var rel in normalizedRelationships)
         {
             if (!nodes.TryGetValue(rel.From, out var fromNode) || !nodes.TryGetValue(rel.To, out var toNode))
-            {
-                continue;
-            }
-            if (!edgeKeys.Add($"{rel.From}|{rel.To}|{rel.Type}"))
             {
                 continue;
             }
@@ -160,6 +160,22 @@ public static class SnapshotComposer
         };
         composed.Nodes.AddRange(nodes.Values);
         composed.Edges.AddRange(edges);
+        composed.Diagnostics.AddRange(diagnostics);
         return composed;
+    }
+
+    // Identity is (From, To, Type); the first occurrence wins so hashing and edge persistence agree.
+    private static List<ParsedRelationship> NormalizeRelationships(IEnumerable<ParsedRelationship> relationships)
+    {
+        var seen = new HashSet<(string From, string To, EdgeType Type)>();
+        var result = new List<ParsedRelationship>();
+        foreach (var rel in relationships)
+        {
+            if (seen.Add((rel.From, rel.To, rel.Type)))
+            {
+                result.Add(rel);
+            }
+        }
+        return result;
     }
 }

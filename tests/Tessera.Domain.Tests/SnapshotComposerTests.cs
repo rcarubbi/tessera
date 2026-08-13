@@ -119,4 +119,88 @@ public class SnapshotComposerTests
         Assert.Equal("PaymentController", edge.FromKey);
         Assert.Equal("PaymentService", edge.ToKey);
     }
+
+    [Fact]
+    public void Duplicate_relationships_produce_the_same_hashes_as_a_single_relationship()
+    {
+        var withDuplicate = BuildParse("svc-hash");
+        withDuplicate.Relationships.Add(new ParsedRelationship { From = "PaymentController", To = "PaymentService", Type = EdgeType.Calls, Evidence = "second evidence" });
+        var withSingle = BuildParse("svc-hash");
+
+        var composedDuplicate = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", withDuplicate, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+        var composedSingle = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", withSingle, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+
+        Assert.Equal(composedSingle.RootHash, composedDuplicate.RootHash);
+        Assert.Equal(
+            composedSingle.Nodes.Single(n => n.Key == "PaymentController").SemanticHash,
+            composedDuplicate.Nodes.Single(n => n.Key == "PaymentController").SemanticHash);
+    }
+
+    [Fact]
+    public void Missing_relationship_endpoint_is_reported_as_a_diagnostic_and_ignored()
+    {
+        var parse = BuildParse("svc-hash");
+        parse.Relationships.Add(new ParsedRelationship { From = "PaymentController", To = "UnknownService", Type = EdgeType.Calls });
+
+        var composed = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parse, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+
+        Assert.DoesNotContain(composed.Edges, e => e.ToKey == "UnknownService");
+        Assert.Contains(composed.Diagnostics, d => d.Contains("UnknownService"));
+    }
+
+    [Fact]
+    public void Duplicate_entity_keys_are_rejected()
+    {
+        var parse = BuildParse("svc-hash");
+        parse.Entities.Add(new ParsedEntity
+        {
+            Key = "PaymentService",
+            Path = "src/Payments/PaymentServiceDuplicate.cs",
+            Symbol = "PaymentService",
+            Kind = NodeKind.Class,
+            Language = "csharp",
+            StructuralHash = "dup-hash"
+        });
+
+        Assert.Throws<ParseResultValidationException>(() =>
+            SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parse, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>()));
+    }
+
+    [Fact]
+    public void Invalid_line_range_is_rejected()
+    {
+        var parse = BuildParse("svc-hash");
+        parse.Entities[0].StartLine = 10;
+        parse.Entities[0].EndLine = 5;
+
+        Assert.Throws<ParseResultValidationException>(() =>
+            SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parse, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>()));
+    }
+
+    [Fact]
+    public void Out_of_range_confidence_is_rejected()
+    {
+        var parse = BuildParse("svc-hash");
+        parse.Relationships[0].Confidence = 1.5;
+
+        Assert.Throws<ParseResultValidationException>(() =>
+            SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parse, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>()));
+    }
+
+    [Fact]
+    public void Composition_is_deterministic_for_equivalent_parse_results()
+    {
+        var parseA = BuildParse("svc-hash");
+        var parseB = new ParseResult
+        {
+            CommitSha = parseA.CommitSha,
+            Entities = { parseA.Entities[1], parseA.Entities[0] },
+            Relationships = { parseA.Relationships[0] }
+        };
+
+        var composedA = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parseA, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+        var composedB = SnapshotComposer.Compose(RepoId, Guid.NewGuid(), "abc123", parseB, new Dictionary<string, KnowledgeNode>(), new Dictionary<string, AiContent>());
+
+        Assert.Equal(composedA.RootHash, composedB.RootHash);
+    }
 }
