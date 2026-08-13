@@ -19,6 +19,13 @@ public sealed class AnalysisPipelineOptions
 {
     public string WorkRoot { get; set; } = "work";
     public int MaxFilesPerBatch { get; set; } = 400;
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(10);
+}
+
+public enum PipelineResult
+{
+    Completed,
+    Cancelled
 }
 
 public sealed class AnalysisPipeline(
@@ -40,8 +47,9 @@ public sealed class AnalysisPipeline(
     private readonly string _workRoot = Path.Combine(options.Value.WorkRoot, "repos");
     private readonly AiOptions _aiOptions = aiOptions.Value;
     private readonly RuleBasedSummarizer _ruleBased = ruleBased;
+    private readonly TimeSpan _leaseDuration = options.Value.LeaseDuration;
 
-    public async Task ProcessAsync(Repository repo, CancellationToken ct = default)
+    public async Task<PipelineResult> ProcessAsync(Repository repo, CancellationToken ct = default)
     {
         var workDir = Path.Combine(_workRoot, repo.FullName);
 
@@ -50,7 +58,8 @@ public sealed class AnalysisPipeline(
             await EnsureNotCancelledAsync(repo, ct);
             await SetStageAsync(repo, ProcessingStatus.Cloning, ct);
 
-            var defaultBranch = await git.EnsureCloneAsync(await ResolveCloneUrlAsync(repo, ct), workDir, ct);
+            var (cloneUrl, authToken) = await ResolveCloneUrlAsync(repo, ct);
+            var defaultBranch = await git.EnsureCloneAsync(cloneUrl, workDir, ct, authToken);
             var head = await git.ResolveHeadAsync(workDir, defaultBranch, ct);
 
             if (repo.ReprocessMode != ReprocessMode.Incremental
@@ -60,7 +69,7 @@ public sealed class AnalysisPipeline(
                 repo.CompletedAt = DateTimeOffset.UtcNow;
                 repo.UpdatedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(ct);
-                return;
+                return PipelineResult.Completed;
             }
 
             if (repo.AnalysisStartedAt is null)
@@ -87,7 +96,7 @@ public sealed class AnalysisPipeline(
                 repo.UpdatedAt = DateTimeOffset.UtcNow;
                 ResetReprocessOptions(repo);
                 await db.SaveChangesAsync(ct);
-                return;
+                return PipelineResult.Completed;
             }
 
             var linked = await linkingService.LinkAsync(parse, repo.GitHubId, ct);
@@ -135,8 +144,11 @@ public sealed class AnalysisPipeline(
             repo.LastSnapshotAt = DateTimeOffset.UtcNow;
             repo.CompletedAt = DateTimeOffset.UtcNow;
             repo.UpdatedAt = DateTimeOffset.UtcNow;
+            repo.ProcessingLeaseId = null;
+            repo.LeaseExpiresAt = null;
             ResetReprocessOptions(repo);
             await db.SaveChangesAsync(ct);
+            return PipelineResult.Completed;
         }
         catch (CancelRequestedException)
         {
@@ -147,8 +159,18 @@ public sealed class AnalysisPipeline(
             repo.StageStartedAt = null;
             repo.ProcessedCount = 0;
             repo.TotalCount = 0;
+            repo.ProcessingLeaseId = null;
+            repo.LeaseExpiresAt = null;
             repo.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
+            return PipelineResult.Cancelled;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host shutdown, not a repository-level cancellation: the ct is already canceled, so it cannot be
+            // used to persist state. Leave the repository's status and lease untouched; the lease mechanism
+            // reclaims it (or a restarted worker resumes it) rather than recording a false analysis failure.
+            throw;
         }
         catch (Exception ex)
         {
@@ -158,6 +180,8 @@ public sealed class AnalysisPipeline(
             var message = ex.Message ?? ex.GetType().Name;
             repo.ErrorMessage = message.Length <= 2000 ? message : message[..2000];
             repo.UpdatedAt = DateTimeOffset.UtcNow;
+            repo.ProcessingLeaseId = null;
+            repo.LeaseExpiresAt = null;
             await db.SaveChangesAsync(ct);
             throw new AnalysisPipelineException($"Analysis of {repo.FullName} failed: {ex.Message}", ex);
         }
@@ -170,6 +194,7 @@ public sealed class AnalysisPipeline(
         repo.ProcessedCount = 0;
         repo.TotalCount = 0;
         repo.UpdatedAt = DateTimeOffset.UtcNow;
+        repo.LeaseExpiresAt = DateTimeOffset.UtcNow.Add(_leaseDuration);
         await db.SaveChangesAsync(ct);
     }
 
@@ -185,22 +210,21 @@ public sealed class AnalysisPipeline(
         }
     }
 
-    private async Task<string> ResolveCloneUrlAsync(Repository repo, CancellationToken ct)
+    private async Task<(string CloneUrl, string? AuthToken)> ResolveCloneUrlAsync(Repository repo, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(repo.CloneUrl))
         {
-            return repo.CloneUrl ?? "";
+            return (repo.CloneUrl ?? "", null);
         }
         if (!repo.CloneUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)
             || repo.InstallationId <= 0
             || string.IsNullOrEmpty(githubOptions.Value.AppId))
         {
-            return repo.CloneUrl;
+            return (repo.CloneUrl, null);
         }
 
         var token = await github.CreateInstallationAccessTokenAsync(repo.InstallationId, ct);
-        var uri = new Uri(repo.CloneUrl);
-        return $"https://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
+        return (repo.CloneUrl, token);
     }
 
     private async Task<ParseResult> ParseRepositoryAsync(string workDir, Repository repo, string head, CancellationToken ct)
@@ -228,6 +252,7 @@ public sealed class AnalysisPipeline(
             {
                 await EnsureNotCancelledAsync(repo, ct);
                 repo.UpdatedAt = DateTimeOffset.UtcNow;
+                repo.LeaseExpiresAt = DateTimeOffset.UtcNow.Add(_leaseDuration);
                 await db.SaveChangesAsync(ct);
             }
         }
@@ -327,6 +352,7 @@ public sealed class AnalysisPipeline(
                 await EnsureNotCancelledAsync(repo, ct);
                 repo.ProcessedCount = processed;
                 repo.UpdatedAt = DateTimeOffset.UtcNow;
+                repo.LeaseExpiresAt = DateTimeOffset.UtcNow.Add(_leaseDuration);
                 await db.SaveChangesAsync(ct);
             }
         }
@@ -481,6 +507,9 @@ public sealed class AnalysisPipeline(
         ComposedSnapshot composed,
         CancellationToken ct)
     {
+        repo.LeaseExpiresAt = DateTimeOffset.UtcNow.Add(_leaseDuration);
+        await db.SaveChangesAsync(ct);
+
         try
         {
             var generated = await embeddingGenerator.GenerateAsync(snapshotId, repo.Id, composed.Nodes, ct);
@@ -489,10 +518,14 @@ public sealed class AnalysisPipeline(
                 log.LogInformation("Generated {count} embeddings for snapshot {snapshotId}", generated, snapshotId);
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             // Embedding generation must never fail the analysis; chat falls back to lexical scoring.
-            log.LogWarning(ex, "Embedding generation failed for snapshot {snapshotId}", snapshotId);
+            log.LogWarning(ex, "Embedding generation failed for repository {repositoryId} snapshot {snapshotId}", repo.Id, snapshotId);
         }
     }
 
@@ -502,6 +535,9 @@ public sealed class AnalysisPipeline(
         ComposedSnapshot composed,
         CancellationToken ct)
     {
+        repo.LeaseExpiresAt = DateTimeOffset.UtcNow.Add(_leaseDuration);
+        await db.SaveChangesAsync(ct);
+
         try
         {
             var result = await overviewService.GenerateAsync(repo, composed.Nodes, composed.Edges, ct);
@@ -517,9 +553,14 @@ public sealed class AnalysisPipeline(
             });
             await db.SaveChangesAsync(ct);
         }
-        catch (Exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             // Overview generation must never fail the analysis.
+            log.LogWarning(ex, "Overview generation failed for repository {repositoryId} snapshot {snapshotId}", repo.Id, snapshotId);
         }
     }
 

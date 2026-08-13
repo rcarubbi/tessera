@@ -12,9 +12,11 @@ public sealed class JobProcessor(
     IServiceScopeFactory scopeFactory,
     ILogger<JobProcessor> logger) : BackgroundService
 {
+    private readonly string _workerInstanceId = Guid.NewGuid().ToString("N");
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Tessera Worker started.");
+        logger.LogInformation("Tessera Worker started (instance {instance}).", _workerInstanceId);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -37,29 +39,9 @@ public sealed class JobProcessor(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
+        var leaseDuration = scope.ServiceProvider.GetRequiredService<IOptions<AnalysisPipelineOptions>>().Value.LeaseDuration;
 
-        // Reclaim repos left in an in-progress state by a crashed worker so they
-        // are re-analyzed instead of being stuck forever (which also skews the
-        // dashboard counters).
-        var staleCutoff = DateTimeOffset.UtcNow.AddMinutes(-30);
-        var reclaimed = await db.Repositories
-            .Where(r => r.IsConnected
-                && (r.Status == ProcessingStatus.Cloning
-                    || r.Status == ProcessingStatus.Parsing
-                    || r.Status == ProcessingStatus.Analyzing
-                    || r.Status == ProcessingStatus.Indexing)
-                && r.UpdatedAt < staleCutoff)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.Status, ProcessingStatus.Pending), ct);
-        if (reclaimed > 0)
-        {
-            logger.LogWarning("Reclaimed {count} stuck repository job(s) back to Pending.", reclaimed);
-        }
-
-        var repo = await db.Repositories
-            .Where(r => r.IsConnected && r.Status == ProcessingStatus.Pending)
-            .OrderBy(r => r.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-
+        var repo = await ClaimNextRepositoryAsync(db, leaseDuration, ct);
         if (repo is null)
         {
             return;
@@ -72,6 +54,8 @@ public sealed class JobProcessor(
             repo.StageStartedAt = null;
             repo.ProcessedCount = 0;
             repo.TotalCount = 0;
+            repo.ProcessingLeaseId = null;
+            repo.LeaseExpiresAt = null;
             repo.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Skipped cancelled repository {repo}", repo.FullName);
@@ -81,9 +65,69 @@ public sealed class JobProcessor(
         logger.LogInformation("Processing repository {repo} ({status})", repo.FullName, repo.Status);
 
         var pipeline = scope.ServiceProvider.GetRequiredService<AnalysisPipeline>();
-        await pipeline.ProcessAsync(repo, ct);
+        var result = await pipeline.ProcessAsync(repo, ct);
 
-        await ProcessPendingPrReviewsAsync(scope, repo, ct);
+        if (result == PipelineResult.Completed && repo.Status == ProcessingStatus.Completed)
+        {
+            await ProcessPendingPrReviewsAsync(scope, repo, ct);
+        }
+    }
+
+    // Claims a repository by atomically flipping Pending -> Cloning (or reclaiming an expired lease) with a
+    // fresh lease id/expiration. ExecuteUpdateAsync's affected-row count is the only proof of ownership: a
+    // count of 0 means another worker (or nothing) won the race, so this instance must not touch the row.
+    public async Task<Repository?> ClaimNextRepositoryAsync(TesseraDbContext db, TimeSpan leaseDuration, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var candidateId = await db.Repositories
+            .Where(r => r.IsConnected
+                && (r.Status == ProcessingStatus.Pending
+                    || ((r.Status == ProcessingStatus.Cloning || r.Status == ProcessingStatus.Parsing || r.Status == ProcessingStatus.Analyzing || r.Status == ProcessingStatus.Indexing)
+                        && r.LeaseExpiresAt != null && r.LeaseExpiresAt < now)))
+            .OrderBy(r => r.CreatedAt)
+            .Select(r => r.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (candidateId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var leaseId = Guid.NewGuid();
+        var leaseExpiresAt = now.Add(leaseDuration);
+
+        var claimed = await db.Repositories
+            .Where(r => r.Id == candidateId
+                && r.IsConnected
+                && (r.Status == ProcessingStatus.Pending
+                    || ((r.Status == ProcessingStatus.Cloning || r.Status == ProcessingStatus.Parsing || r.Status == ProcessingStatus.Analyzing || r.Status == ProcessingStatus.Indexing)
+                        && r.LeaseExpiresAt != null && r.LeaseExpiresAt < now)))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(r => r.Status, ProcessingStatus.Cloning)
+                .SetProperty(r => r.ProcessingLeaseId, leaseId)
+                .SetProperty(r => r.LeaseExpiresAt, leaseExpiresAt)
+                .SetProperty(r => r.WorkerInstanceId, _workerInstanceId)
+                .SetProperty(r => r.StageStartedAt, now)
+                .SetProperty(r => r.ProcessedCount, 0)
+                .SetProperty(r => r.TotalCount, 0)
+                .SetProperty(r => r.UpdatedAt, now),
+                ct);
+
+        if (claimed != 1)
+        {
+            // Another worker (or a concurrent poll from this one) claimed it first; skip this cycle.
+            return null;
+        }
+
+        // ExecuteUpdateAsync bypasses the change tracker, so if this context already tracked the entity
+        // (e.g. from a prior query), a plain query would hand back the stale, pre-claim in-memory values.
+        // Reload forces a fresh SELECT into the tracked entry.
+        var entity = await db.Repositories.FindAsync([candidateId], ct);
+        if (entity is not null)
+        {
+            await db.Entry(entity).ReloadAsync(ct);
+        }
+        return entity;
     }
 
     private async Task ProcessPendingPrReviewsAsync(IServiceScope scope, Repository repo, CancellationToken ct)
@@ -110,3 +154,4 @@ public sealed class JobProcessor(
         }
     }
 }
+

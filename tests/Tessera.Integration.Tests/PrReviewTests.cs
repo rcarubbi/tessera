@@ -371,7 +371,7 @@ public sealed class PrReviewServiceTests
 
     private sealed class FakeGitClient(IReadOnlyList<string> changedFiles) : IGitClient
     {
-        public Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default) => Task.FromResult("main");
+        public Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default, string? authToken = null) => Task.FromResult("main");
         public Task<string> ResolveHeadAsync(string workDir, string branch, CancellationToken ct = default) => Task.FromResult("head");
         public Task<IReadOnlyList<string>> ListFilesAtCommitAsync(string workDir, string commitSha, CancellationToken ct = default)
             => Task.FromResult(changedFiles);
