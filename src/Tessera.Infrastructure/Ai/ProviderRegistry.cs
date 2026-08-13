@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Tessera.Domain.Ports;
 
 namespace Tessera.Infrastructure.Ai;
@@ -15,15 +16,18 @@ public interface IProviderRegistry
 
 public sealed class ProviderRegistry : IProviderRegistry
 {
+    private sealed record ProviderSnapshotCache(long Version, IReadOnlyDictionary<string, IChatProvider> Providers);
+
     private readonly IHttpClientFactory _factory;
     private readonly AiSettingsCache _cache;
-    private long _version = -1;
-    private IReadOnlyDictionary<string, IChatProvider>? _providers;
+    private readonly ILogger<ProviderRegistry> _logger;
+    private ProviderSnapshotCache? _built;
 
-    public ProviderRegistry(IHttpClientFactory factory, AiSettingsCache cache)
+    public ProviderRegistry(IHttpClientFactory factory, AiSettingsCache cache, ILogger<ProviderRegistry> logger)
     {
         _factory = factory;
         _cache = cache;
+        _logger = logger;
     }
 
     private IReadOnlyDictionary<string, IChatProvider> Providers
@@ -31,19 +35,37 @@ public sealed class ProviderRegistry : IProviderRegistry
         get
         {
             var snapshot = _cache.GetSnapshot();
-            if (_providers is null || _version != snapshot.Version)
+            var built = _built;
+            if (built is not null && built.Version == snapshot.Version)
             {
-                _version = snapshot.Version;
-                _providers = snapshot.Providers
-                    .Where(p => !string.IsNullOrEmpty(p.Name) && !string.IsNullOrEmpty(p.BaseUrl))
-                    .ToDictionary(
-                        p => p.Name,
-                        p => (IChatProvider)new OpenAiCompatibleChatProvider(_factory.CreateClient($"ai-{p.Name}"), p),
-                        StringComparer.OrdinalIgnoreCase);
+                return built.Providers;
             }
-            return _providers;
+
+            // Construct the full dictionary in a local variable so a partially built (or invalid) provider
+            // set is never published; publish it via a single reference assignment once it's ready.
+            var providers = new Dictionary<string, IChatProvider>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in snapshot.Providers)
+            {
+                if (string.IsNullOrEmpty(p.Name) || string.IsNullOrEmpty(p.BaseUrl))
+                {
+                    continue;
+                }
+                try
+                {
+                    providers[p.Name] = new OpenAiCompatibleChatProvider(_factory.CreateClient($"ai-{p.Name}"), p);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Skipping AI provider '{Provider}' due to invalid configuration.", p.Name);
+                }
+            }
+
+            var next = new ProviderSnapshotCache(snapshot.Version, providers);
+            _built = next;
+            return providers;
         }
     }
+
 
     public IChatProvider? Get(string? name) =>
         !string.IsNullOrEmpty(name) && Providers.TryGetValue(name, out var provider) ? provider : null;
@@ -81,6 +103,11 @@ public static class RetryPolicy
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaxTotalDelay = TimeSpan.FromSeconds(12);
 
+    // Use as an exception filter (`when (RetryPolicy.IsCallerCancellation(ex, ct))`) so caller
+    // cancellation is re-thrown instead of being treated as a degradable provider failure.
+    public static bool IsCallerCancellation(Exception ex, CancellationToken ct) =>
+        ex is OperationCanceledException && ct.IsCancellationRequested;
+
     public static async Task<T> WithRetryAsync<T>(
         Func<CancellationToken, Task<T>> action,
         int maxRetries,
@@ -95,7 +122,7 @@ public static class RetryPolicy
             {
                 return await action(ct);
             }
-            catch (Exception ex) when (attempt < maxRetries && TryGetRetryDelay(ex, delay, attempt, out var wait))
+            catch (Exception ex) when (!IsCallerCancellation(ex, ct) && attempt < maxRetries && TryGetRetryDelay(ex, delay, attempt, out var wait))
             {
                 if (totalWait + wait > MaxTotalDelay)
                 {

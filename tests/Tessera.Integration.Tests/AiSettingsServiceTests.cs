@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Tessera.Domain.Entities;
 using Tessera.Infrastructure.Ai;
 using Tessera.Infrastructure.Data;
@@ -188,6 +189,33 @@ public sealed class AiSettingsServiceTests
         Assert.Null(snapshot.Primary);
     }
 
+    [Fact]
+    public async Task RefreshAsync_canceled_before_acquisition_does_not_leak_the_semaphore()
+    {
+        using var ctx = CreateContext();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ctx.Cache.RefreshAsync(cts.Token));
+
+        // If the semaphore were left at 0 capacity, this would hang instead of completing.
+        await ctx.Cache.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_concurrent_calls_do_not_deadlock_and_leave_a_valid_snapshot()
+    {
+        using var ctx = CreateContext();
+        var service = new AiSettingsService(ctx.Db, ctx.Cache);
+        await service.SaveAsync(new AiSettingsRequest("gemini", "https://x", "model", "key", null, null, null));
+
+        var refreshes = Enumerable.Range(0, 10).Select(_ => ctx.Cache.RefreshAsync());
+        await Task.WhenAll(refreshes).WaitAsync(TimeSpan.FromSeconds(10));
+
+        var snapshot = ctx.Cache.GetSnapshot();
+        Assert.Single(snapshot.Providers);
+    }
+
     private static TestContext CreateContext()
     {
         var databaseName = Guid.NewGuid().ToString();
@@ -198,7 +226,7 @@ public sealed class AiSettingsServiceTests
         var provider = services.BuildServiceProvider();
         var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
-        var cache = new AiSettingsCache(provider.GetRequiredService<IServiceScopeFactory>());
+        var cache = new AiSettingsCache(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<AiSettingsCache>.Instance);
         return new TestContext(db, cache, scope, provider);
     }
 

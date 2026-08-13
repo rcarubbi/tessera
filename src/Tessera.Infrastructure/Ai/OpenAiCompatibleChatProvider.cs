@@ -40,7 +40,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         };
 
         using var timeout = CreateTimeoutSource(ct);
-        var response = await _http.PostAsJsonAsync(_config.EmbeddingEndpoint, payload, timeout.Token);
+        using var response = await _http.PostAsJsonAsync(_config.EmbeddingEndpoint, payload, timeout.Token);
         if (!response.IsSuccessStatusCode)
         {
             throw await BuildErrorAsync(response, timeout.Token);
@@ -74,7 +74,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         };
 
         using var timeout = CreateTimeoutSource(ct);
-        var response = await _http.PostAsJsonAsync(_config.Endpoint, payload, timeout.Token);
+        using var response = await _http.PostAsJsonAsync(_config.Endpoint, payload, timeout.Token);
         if (!response.IsSuccessStatusCode)
         {
             throw await BuildErrorAsync(response, timeout.Token);
@@ -109,10 +109,13 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         {
             Content = JsonContent.Create(payload)
         };
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        // Same request timeout as non-streaming calls applies to establishing the response; once headers
+        // arrive, the read loop below is bounded only by caller cancellation since stream duration is open-ended.
+        using var headersTimeout = CreateTimeoutSource(ct);
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headersTimeout.Token);
         if (!response.IsSuccessStatusCode)
         {
-            throw await BuildErrorAsync(response, ct);
+            throw await BuildErrorAsync(response, headersTimeout.Token);
         }
 
         using var body = await response.Content.ReadAsStreamAsync(ct);

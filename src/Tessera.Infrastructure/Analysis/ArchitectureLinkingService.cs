@@ -76,11 +76,19 @@ public sealed class ArchitectureLinkingService(
         {
             content = await RetryPolicy.WithRetryAsync(ct2 => provider.CompleteAsync(messages, ct2), _options.MaxRetries, ct: ct);
         }
+        catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+        {
+            throw;
+        }
         catch (Exception) when (providers.Fallback is not null)
         {
             try
             {
                 content = await providers.Fallback.CompleteAsync(messages, ct);
+            }
+            catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+            {
+                throw;
             }
             catch (Exception)
             {

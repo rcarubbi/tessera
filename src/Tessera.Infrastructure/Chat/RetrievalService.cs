@@ -89,6 +89,10 @@ public sealed class RetrievalService(
         {
             return await EmbeddingScoreAsync(embedding, snapshot, nodes, question, ct);
         }
+        catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+        {
+            throw;
+        }
         catch (Exception)
         {
             return LexicalScore(nodes, question);
