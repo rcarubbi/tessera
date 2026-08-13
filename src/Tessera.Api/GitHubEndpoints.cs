@@ -32,15 +32,20 @@ public static class GitHubEndpoints
         var installationId = context.Request.Query["installation_id"].ToString();
         var setupAction = context.Request.Query["setup_action"].ToString();
 
-        if (string.IsNullOrEmpty(installationId))
+        if (!long.TryParse(installationId, out var id) || id <= 0)
         {
-            return Results.BadRequest(new { error = "missing installation_id" });
+            return Results.BadRequest(new { error = "installation_id must be a positive integer" });
         }
 
         if (string.Equals(setupAction, "uninstall", StringComparison.OrdinalIgnoreCase))
         {
+            if (!await IsKnownInstallationAsync(github, id, ct))
+            {
+                return Results.NotFound(new { error = "Unknown GitHub App installation." });
+            }
+
             var removed = await db.GitHubInstallations
-                .Where(i => i.Id == long.Parse(installationId))
+                .Where(i => i.Id == id)
                 .ToListAsync(ct);
             foreach (var uninstalled in removed)
             {
@@ -51,9 +56,17 @@ public static class GitHubEndpoints
             return Results.Ok(new { status = "uninstalled" });
         }
 
-        var id = long.Parse(installationId);
-        var token = await github.CreateInstallationAccessTokenAsync(id, ct);
-        var repos = await github.ListInstallationRepositoriesAsync(id, token, ct);
+        string token;
+        IReadOnlyList<GitHubRepoInfo> repos;
+        try
+        {
+            token = await github.CreateInstallationAccessTokenAsync(id, ct);
+            repos = await github.ListInstallationRepositoriesAsync(id, token, ct);
+        }
+        catch (Exception)
+        {
+            return Results.NotFound(new { error = "Unknown or inaccessible GitHub App installation." });
+        }
 
         var install = await db.GitHubInstallations.FindAsync([id], ct);
         if (install is null)
@@ -124,32 +137,57 @@ public static class GitHubEndpoints
             return Results.Json(new { error = "invalid signature" }, statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        using var doc = JsonDocument.Parse(bodyBytes);
-        var root = doc.RootElement;
-
-        switch (eventName)
+        JsonDocument doc;
+        try
         {
-            case "ping":
-                return Results.Json(new { received = true, type = "ping" });
+            doc = JsonDocument.Parse(bodyBytes);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "invalid JSON payload" });
+        }
 
-            case "push":
-                await HandlePushAsync(db, root, ct);
-                return Results.Json(new { received = true, type = "push" });
+        using (doc)
+        {
+            var root = doc.RootElement;
 
-            case "installation":
-                await HandleInstallationAsync(db, root, ct);
-                return Results.Json(new { received = true, type = "installation" });
+            switch (eventName)
+            {
+                case "ping":
+                    return Results.Json(new { received = true, type = "ping" });
 
-            case "installation_repositories":
-                await HandleInstallationRepositoriesAsync(db, root, ct);
-                return Results.Json(new { received = true, type = "installation_repositories" });
+                case "push":
+                    await HandlePushAsync(db, root, ct);
+                    return Results.Json(new { received = true, type = "push" });
 
-            case "pull_request":
-                await HandlePullRequestAsync(db, root, ct);
-                return Results.Json(new { received = true, type = "pull_request" });
+                case "installation":
+                    await HandleInstallationAsync(db, root, ct);
+                    return Results.Json(new { received = true, type = "installation" });
 
-            default:
-                return Results.Json(new { received = true, type = eventName });
+                case "installation_repositories":
+                    await HandleInstallationRepositoriesAsync(db, root, ct);
+                    return Results.Json(new { received = true, type = "installation_repositories" });
+
+                case "pull_request":
+                    await HandlePullRequestAsync(db, root, ct);
+                    return Results.Json(new { received = true, type = "pull_request" });
+
+                default:
+                    return Results.Json(new { received = true, type = eventName });
+            }
+        }
+    }
+
+    private static async Task<bool> IsKnownInstallationAsync(IGitHubAppClient github, long id, CancellationToken ct)
+    {
+        try
+        {
+            await github.CreateInstallationAccessTokenAsync(id, ct);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 

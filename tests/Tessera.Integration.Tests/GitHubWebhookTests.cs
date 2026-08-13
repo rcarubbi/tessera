@@ -125,6 +125,21 @@ public sealed class GitHubWebhookEndpointTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
+    public async Task Malformed_json_payload_is_rejected()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/github/webhook");
+        var bytes = Encoding.UTF8.GetBytes("{ not valid json");
+        request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        request.Headers.Add("X-GitHub-Event", "push");
+        request.Headers.Add("X-Hub-Signature-256", Sign(bytes));
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Installation_removed_disconnects_repos()
     {
         await SeedRepoAsync(555, "acme/sample");
@@ -194,6 +209,22 @@ public sealed class GitHubWebhookEndpointTests : IClassFixture<WebApplicationFac
         using var db = CreateDb();
         var repo = await db.Repositories.SingleAsync(r => r.GitHubId == 556);
         Assert.Equal("https://github.com/acme/sample.git", repo.CloneUrl);
+    }
+
+    [Fact]
+    public async Task Setup_with_non_numeric_installation_id_returns_bad_request()
+    {
+        var response = await _client.GetAsync("/api/github/setup?installation_id=not-a-number&setup_action=install");
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Setup_uninstall_with_unknown_installation_returns_not_found()
+    {
+        var response = await _client.GetAsync("/api/github/setup?installation_id=999999&setup_action=uninstall");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
     private async Task<HttpResponseMessage> PostWebhookAsync(string eventName, string payload)
