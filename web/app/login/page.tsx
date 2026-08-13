@@ -7,7 +7,7 @@ import { API_BASE } from "@/lib/api";
 import { card, field } from "@/lib/ui";
 
 export default function LoginPage() {
-  const { login, logout, refreshUser } = useAuth();
+  const { login, hydrated, user } = useAuth();
   const router = useRouter();
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,14 +15,14 @@ export default function LoginPage() {
   const [githubEnabled, setGithubEnabled] = useState(true);
 
   useEffect(() => {
+    if (hydrated && user) {
+      router.replace("/repos");
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
     const oauthError = params.get("error");
     const reason = params.get("reason");
-    if (token) {
-      login(token);
-      router.replace("/repos");
-    } else if (oauthError === "oauth_failed") {
+    if (oauthError === "oauth_failed") {
       if (reason === "invalid_state") {
         setError("GitHub sign-in session expired or state was invalid. Please try again.");
       } else if (reason) {
@@ -37,17 +37,15 @@ export default function LoginPage() {
         if (cfg) setGithubEnabled(cfg.githubEnabled === true);
       })
       .catch(() => setGithubEnabled(false));
-  }, [login, router]);
+  }, [hydrated, user, router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!key.trim()) return;
     setChecking(true);
     setError(null);
-    login(key.trim());
-    const user = await refreshUser();
-    if (!user) {
-      logout();
+    const ok = await login(key.trim());
+    if (!ok) {
       setError("Invalid access key.");
       setChecking(false);
       return;

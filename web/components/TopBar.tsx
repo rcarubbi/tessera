@@ -6,9 +6,9 @@ import { useAuth } from "@/components/AuthContext";
 import { badge, btn, btnSmall } from "@/lib/ui";
 
 export function TopBar() {
-  const { token, user, logout, hydrated } = useAuth();
+  const { user, logout, hydrated } = useAuth();
   const pathname = usePathname();
-  const authed = hydrated && !!token;
+  const authed = hydrated && !!user;
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-panel/95 backdrop-blur">

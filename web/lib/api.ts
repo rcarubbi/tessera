@@ -1,20 +1,5 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5080";
 
-export const TOKEN_KEY = "tessera.token";
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string) {
-  window.localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken() {
-  window.localStorage.removeItem(TOKEN_KEY);
-}
-
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -24,19 +9,16 @@ export class ApiError extends Error {
   }
 }
 
+function fetchOptions(init: RequestInit): RequestInit {
+  return { ...init, credentials: "include", cache: "no-store" };
+}
+
 async function headers(extra?: Record<string, string>): Promise<Record<string, string>> {
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (token) h.Authorization = `Bearer ${token}`;
-  return { ...h, ...extra };
+  return { "Content-Type": "application/json", ...extra };
 }
 
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: await headers(),
-    signal,
-    cache: "no-store",
-  });
+  const res = await fetch(`${API_BASE}${path}`, fetchOptions({ headers: await headers(), signal }));
   if (res.status === 401) throw new ApiError(401, "Unauthorized");
   if (!res.ok) {
     const body = await res.text();
@@ -46,12 +28,11 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, fetchOptions({
     method: "POST",
     headers: await headers(),
     body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
+  }));
   if (res.status === 401) throw new ApiError(401, "Unauthorized");
   if (!res.ok) {
     const text = await res.text();
@@ -61,12 +42,11 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, fetchOptions({
     method: "PUT",
     headers: await headers(),
     body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  }));
   if (res.status === 401) throw new ApiError(401, "Unauthorized");
   if (!res.ok) {
     const text = await res.text();
@@ -76,11 +56,10 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, fetchOptions({
     method: "DELETE",
     headers: await headers(),
-    cache: "no-store",
-  });
+  }));
   if (res.status === 401) throw new ApiError(401, "Unauthorized");
   if (!res.ok) {
     const text = await res.text();
@@ -137,6 +116,7 @@ export async function streamChat(
     headers: await headers(),
     body: JSON.stringify({ question }),
     cache: "no-store",
+    credentials: "include",
     signal,
   });
   if (!res.ok) {

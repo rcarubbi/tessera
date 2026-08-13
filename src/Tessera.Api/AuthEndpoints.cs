@@ -42,15 +42,35 @@ public static class AccessControlExtensions
 public static class AuthEndpoints
 {
     private const string StateCookieName = "tessera.oauth_state";
+    public const string SessionCookieName = "tessera.session";
 
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/auth/login", HandleLoginAsync);
         app.MapGet("/api/auth/callback", HandleCallbackAsync);
+        app.MapPost("/api/auth/key", HandleKeyLoginAsync);
         app.MapPost("/api/auth/logout", HandleLogoutAsync);
         app.MapGet("/api/auth/me", HandleMeAsync);
         app.MapGet("/api/auth/config", (IOptions<GitHubOAuthOptions> options) =>
             Results.Ok(new { githubEnabled = IsConfigured(options.Value) }));
+    }
+
+    private static IResult HandleKeyLoginAsync(
+        HttpContext context,
+        IConfiguration configuration,
+        IOptions<AuthOptions> authOptions,
+        KeyLoginRequest request)
+    {
+        var dashboardApiKey = configuration["Dashboard:ApiKey"] ?? "";
+        if (string.IsNullOrEmpty(dashboardApiKey)
+            || string.IsNullOrWhiteSpace(request.ApiKey)
+            || !string.Equals(request.ApiKey.Trim(), dashboardApiKey, StringComparison.Ordinal))
+        {
+            return Results.Json(new { error = "Invalid access key." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        AppendSessionCookie(context, request.ApiKey.Trim(), TimeSpan.FromDays(authOptions.Value.ApiKeySessionDays));
+        return Results.Ok(new { ok = true });
     }
 
     private static IResult HandleLoginAsync(HttpContext context, IOptions<GitHubOAuthOptions> options, IGitHubOAuthClient oauth)
@@ -77,6 +97,7 @@ public static class AuthEndpoints
         AccessControlService accessService,
         IGitHubOAuthClient oauth,
         IOptions<GitHubOAuthOptions> options,
+        IOptions<AuthOptions> authOptions,
         ILogger<Program> logger,
         CancellationToken ct)
     {
@@ -122,12 +143,19 @@ public static class AuthEndpoints
         await db.SaveChangesAsync(ct);
 
         var session = await accessService.CreateSessionAsync(user, ct);
-        return RedirectToWeb(options.Value, $"token={session.Token}");
+        AppendSessionCookie(context, session.Token, TimeSpan.FromHours(authOptions.Value.SessionLifetimeHours));
+        return RedirectToWeb(options.Value, string.Empty);
     }
 
     private static async Task<IResult> HandleLogoutAsync(HttpContext context, AccessControlService accessService, CancellationToken ct)
     {
-        await accessService.RevokeAsync(context.Request.Headers.Authorization.ToString(), ct);
+        var token = context.Request.Cookies[SessionCookieName];
+        if (string.IsNullOrEmpty(token))
+        {
+            token = context.Request.Headers.Authorization.ToString();
+        }
+        await accessService.RevokeAsync(token, ct);
+        context.Response.Cookies.Delete(SessionCookieName);
         return Results.Ok(new { status = "signed_out" });
     }
 
@@ -138,7 +166,12 @@ public static class AuthEndpoints
         CancellationToken ct)
     {
         var dashboardApiKey = configuration["Dashboard:ApiKey"] ?? "";
-        var access = await accessService.AuthenticateAsync(context.Request.Headers.Authorization.ToString(), dashboardApiKey, ct);
+        var credential = context.Request.Cookies[SessionCookieName];
+        if (string.IsNullOrEmpty(credential))
+        {
+            credential = context.Request.Headers.Authorization.ToString();
+        }
+        var access = await accessService.AuthenticateAsync(credential, dashboardApiKey, ct);
         if (access is null)
         {
             return Results.Json(new { error = "Unauthorized." }, statusCode: StatusCodes.Status401Unauthorized);
@@ -152,9 +185,26 @@ public static class AuthEndpoints
         });
     }
 
+    private static void AppendSessionCookie(HttpContext context, string token, TimeSpan lifetime)
+    {
+        context.Response.Cookies.Append(SessionCookieName, token, new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Secure = context.Request.IsHttps,
+            MaxAge = lifetime
+        });
+    }
+
     private static IResult RedirectToWeb(GitHubOAuthOptions options, string query)
-        => Results.Redirect($"{options.WebUrl.TrimEnd('/')}/login?{query}");
+    {
+        var target = $"{options.WebUrl.TrimEnd('/')}/login";
+        return Results.Redirect(string.IsNullOrEmpty(query) ? target : $"{target}?{query}");
+    }
 
     private static bool IsConfigured(GitHubOAuthOptions options)
         => !string.IsNullOrEmpty(options.ClientId) && !string.IsNullOrEmpty(options.ClientSecret);
 }
+
+public sealed record KeyLoginRequest(string ApiKey);

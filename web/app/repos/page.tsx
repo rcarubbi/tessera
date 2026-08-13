@@ -14,7 +14,7 @@ import type { Repository } from "@/lib/types";
 const STATUS_FAILED = 6;
 
 export default function ReposPage() {
-  const { token, logout } = useAuth();
+  const { user, hydrated, logout } = useAuth();
   const router = useRouter();
   const [repos, setRepos] = useState<Repository[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +36,14 @@ export default function ReposPage() {
   };
 
   useEffect(() => {
-    if (!token) {
+    if (!hydrated) return;
+    if (!user) {
       router.replace("/login");
       return;
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, router, logout]);
+  }, [user, hydrated, router, logout]);
 
   const startAnalyze = async (id: string) => {
     setStartingId(id);

@@ -10,7 +10,7 @@ import type { AiSettings, AiSettingsList, AiSettingsRequest } from "@/lib/types"
 import { badge, badgeGreen, btn, btnDanger, btnPrimary, btnSmall, card, cardError, field } from "@/lib/ui";
 
 export default function SettingsPage() {
-  const { token, user, logout } = useAuth();
+  const { user, hydrated, logout } = useAuth();
   const router = useRouter();
 
   const [providers, setProviders] = useState<AiSettings[]>([]);
@@ -51,12 +51,13 @@ export default function SettingsPage() {
   }, [logout, router]);
 
   useEffect(() => {
-    if (!token) {
+    if (!hydrated) return;
+    if (!user) {
       router.replace("/login");
       return;
     }
     load();
-  }, [token, router, load]);
+  }, [user, hydrated, router, load]);
 
   const handleProviderChange = (value: string) => {
     setProviderName(value);

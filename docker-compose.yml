@@ -39,6 +39,8 @@ services:
       ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
       # Dashboard access key (required by the web dashboard):
       Dashboard__ApiKey: "dev-dashboard-key"
+      # Allowed web origins (comma-separated). With cookies, credentials are allowed only for these origins:
+      Cors__AllowedOrigins: "http://localhost:3000"
       # GitHub App config (ingestion + OAuth login). Fill .env (see README/DEPLOYMENT.md):
       GitHub__AppId: "${GITHUB_APP_ID:-}"
       GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"

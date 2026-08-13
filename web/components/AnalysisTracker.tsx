@@ -23,7 +23,7 @@ const STAGES = [
 const POLL_MS = 3000;
 
 export default function AnalysisTracker({ repoId }: { repoId: string }) {
-  const { token, logout } = useAuth();
+  const { user, hydrated, logout } = useAuth();
   const router = useRouter();
   const [repo, setRepo] = useState<Repository | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,12 +48,13 @@ export default function AnalysisTracker({ repoId }: { repoId: string }) {
   }, [repoId, logout, router]);
 
   useEffect(() => {
-    if (!token) {
+    if (!hydrated) return;
+    if (!user) {
       router.replace("/login");
       return;
     }
     load();
-  }, [token, router, load]);
+  }, [user, hydrated, router, load]);
 
   const terminal = repo !== null && (repo.status === 5 || repo.status === 6 || repo.status === 7);
   const isFailed = repo !== null && repo.status === 6;

@@ -25,9 +25,14 @@ public sealed class TesseraAuthenticationHandler(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var header = Context.Request.Headers.Authorization.ToString();
+        var credential = Context.Request.Cookies[AuthEndpoints.SessionCookieName];
+        if (string.IsNullOrEmpty(credential))
+        {
+            credential = Context.Request.Headers.Authorization.ToString();
+        }
+
         var access = await accessService.AuthenticateAsync(
-            header,
+            credential,
             configuration["Dashboard:ApiKey"] ?? "",
             Context.RequestAborted);
 
