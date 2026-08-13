@@ -258,6 +258,10 @@ public sealed class AnalysisPipeline(
         }
 
         var result = await parser.ParseAsync(head, repo.DefaultBranch, sourceFiles, ct);
+        foreach (var diagnostic in result.Diagnostics)
+        {
+            log.LogWarning("Parser diagnostic for repository {repositoryId} at {commit}: {diagnostic}", repo.Id, head, diagnostic);
+        }
         repo.ProcessedCount = repo.TotalCount;
         await db.SaveChangesAsync(ct);
         return result;

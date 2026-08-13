@@ -32,4 +32,5 @@ public sealed class ParseResult
     public string DefaultBranch { get; set; } = "";
     public List<ParsedEntity> Entities { get; set; } = new();
     public List<ParsedRelationship> Relationships { get; set; } = new();
+    public List<string> Diagnostics { get; set; } = new();
 }

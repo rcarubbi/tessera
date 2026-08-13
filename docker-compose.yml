@@ -19,7 +19,7 @@ services:
     build:
       context: ./analyzers
     ports:
-      - "4350:4350"
+      - "127.0.0.1:4350:4350"
     environment:
       PORT: 4350
       NODE_OPTIONS: "--max-old-space-size=768"

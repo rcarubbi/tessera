@@ -85,15 +85,23 @@ const IMPORT_NODES = {
 
 const parserCache = new Map();
 
-async function loadParser(language) {
-  if (parserCache.has(language)) return parserCache.get(language);
-  const wasm = path.join(WASMS_DIR, `tree-sitter-${language}.wasm`);
-  if (!fs.existsSync(wasm)) throw new Error(`No grammar for language: ${language}`);
-  const lang = await Parser.Language.load(wasm);
-  const parser = new Parser();
-  parser.setLanguage(lang);
-  parserCache.set(language, parser);
-  return parser;
+// Caches the loading Promise (not just the resolved parser) so concurrent
+// callers share a single WASM init instead of racing on a cold cache. On
+// failure the entry is removed so a later call can retry.
+function loadParser(language) {
+  const cached = parserCache.get(language);
+  if (cached) return cached;
+  const pending = (async () => {
+    const wasm = path.join(WASMS_DIR, `tree-sitter-${language}.wasm`);
+    if (!fs.existsSync(wasm)) throw new Error(`No grammar for language: ${language}`);
+    const lang = await Parser.Language.load(wasm);
+    const parser = new Parser();
+    parser.setLanguage(lang);
+    return parser;
+  })();
+  parserCache.set(language, pending);
+  pending.catch(() => parserCache.delete(language));
+  return pending;
 }
 
 function sha256(input) {

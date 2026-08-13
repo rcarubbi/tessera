@@ -43,7 +43,10 @@ public sealed class ParserSidecarClient : IParserSidecarClient
         };
 
         var response = await _http.PostAsJsonAsync("parse", payload, ct);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await ParseFailureException(response, ct);
+        }
         var result = await response.Content.ReadFromJsonAsync<SidecarParseResponse>(ct);
         if (result is null)
         {
@@ -74,8 +77,46 @@ public sealed class ParserSidecarClient : IParserSidecarClient
                 Evidence = r.Evidence,
                 Confidence = r.Confidence,
                 IsStatic = r.IsStatic
-            }).ToList()
+            }).ToList(),
+            Diagnostics = result.Diagnostics ?? new List<string>()
         };
+    }
+
+    private static async Task<HttpRequestException> ParseFailureException(HttpResponseMessage response, CancellationToken ct)
+    {
+        string detail = string.Empty;
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<SidecarErrorResponse>(ct);
+            if (body is not null)
+            {
+                var failures = body.Failures is { Count: > 0 }
+                    ? string.Join("; ", body.Failures.Select(f => $"{f.Path}: {f.Message}"))
+                    : body.Error;
+                detail = failures ?? body.Error ?? "";
+            }
+        }
+        catch
+        {
+            // Reading the error body is best-effort; fall back to the status code.
+        }
+
+        var message = string.IsNullOrWhiteSpace(detail)
+            ? $"Parser sidecar returned {(int)response.StatusCode} {response.StatusCode}."
+            : $"Parser sidecar returned {(int)response.StatusCode} {response.StatusCode}: {detail}";
+        return new HttpRequestException(message);
+    }
+
+    private sealed class SidecarErrorResponse
+    {
+        public string? Error { get; set; }
+        public List<SidecarFailure>? Failures { get; set; }
+    }
+
+    private sealed class SidecarFailure
+    {
+        public string Path { get; set; } = "";
+        public string Message { get; set; } = "";
     }
 
     private sealed class SidecarParseResponse
@@ -84,6 +125,7 @@ public sealed class ParserSidecarClient : IParserSidecarClient
         public string? DefaultBranch { get; set; }
         public List<SidecarEntity> Entities { get; set; } = new();
         public List<SidecarRelationship> Relationships { get; set; } = new();
+        public List<string>? Diagnostics { get; set; }
     }
 
     private sealed class SidecarEntity
