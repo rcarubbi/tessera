@@ -271,6 +271,36 @@ public sealed class EndToEndPipelineTests : IDisposable
         Assert.False(repo.CancelRequested);
     }
 
+    [Fact]
+    public async Task Host_shutdown_cancellation_does_not_mark_the_repository_failed()
+    {
+        using var db = CreateDb();
+
+        var repo = new Repository
+        {
+            Id = Guid.NewGuid(),
+            FullName = "e2e/host-shutdown",
+            CloneUrl = _gitRepoRoot,
+            DefaultBranch = "main",
+            Status = ProcessingStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Repositories.Add(repo);
+        await db.SaveChangesAsync();
+
+        var pipeline = CreatePipeline(db);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // A pre-canceled token simulates host shutdown: EnsureNotCancelledAsync's own DB query throws a plain
+        // OperationCanceledException (not CancelRequestedException), which must not be treated as a failure.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pipeline.ProcessAsync(repo, cts.Token));
+
+        Assert.Equal(ProcessingStatus.Pending, repo.Status);
+        Assert.Null(repo.ErrorMessage);
+    }
+
     private static void CommitExtraFiles(string repoRoot)
     {
         for (var i = 0; i < 30; i++)

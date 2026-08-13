@@ -31,6 +31,21 @@ public sealed class GitClientTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureCloneAsync_never_leaks_the_auth_token_in_a_failure_message()
+    {
+        const string secretToken = "ghs_super-secret-installation-token";
+        var targetDir = Path.Combine(Path.GetTempPath(), "tessera-git-client-tests", Guid.NewGuid().ToString());
+
+        // A nonexistent local path makes `git clone` fail fast without any network access.
+        var ex = await Assert.ThrowsAsync<GitCommandException>(
+            () => _client.EnsureCloneAsync("/nonexistent/path/repo.git", targetDir, authToken: secretToken));
+
+        Assert.DoesNotContain(secretToken, ex.Message);
+        Assert.DoesNotContain(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"x-access-token:{secretToken}")), ex.Message);
+        Assert.Contains("<redacted>", ex.Message);
+    }
+
+    [Fact]
     public async Task ListFilesAtCommitAsync_invalid_commit_throws_with_stderr_detail()
     {
         var ex = await Assert.ThrowsAsync<GitCommandException>(

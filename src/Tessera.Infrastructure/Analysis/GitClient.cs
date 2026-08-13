@@ -1,10 +1,11 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Tessera.Infrastructure.Analysis;
 
 public interface IGitClient
 {
-    Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default);
+    Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default, string? authToken = null);
     Task<string> ResolveHeadAsync(string workDir, string branch, CancellationToken ct = default);
     Task<IReadOnlyList<string>> ListFilesAtCommitAsync(string workDir, string commitSha, CancellationToken ct = default);
     Task<string?> ReadFileAtCommitAsync(string workDir, string commitSha, string path, CancellationToken ct = default);
@@ -13,20 +14,34 @@ public interface IGitClient
 
 public sealed class GitClient : IGitClient
 {
-    public async Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default)
+    // GitHub App installation tokens authenticate as HTTP Basic with any username; sending them via a
+    // header (instead of embedding in the remote URL) keeps them out of .git/config and `git remote -v`.
+    public async Task<string> EnsureCloneAsync(string cloneUrl, string workDir, CancellationToken ct = default, string? authToken = null)
     {
+        var authArgs = BuildAuthArgs(authToken);
         if (Directory.Exists(Path.Combine(workDir, ".git")))
         {
-            await RunAsync(workDir, new[] { "fetch", "--all", "--prune" }, ct);
+            await RunAsync(workDir, [.. authArgs, "fetch", "--all", "--prune"], ct);
         }
         else
         {
             Directory.CreateDirectory(workDir);
-            await RunAsync(workDir, new[] { "clone", "--no-checkout", cloneUrl, "." }, ct);
+            await RunAsync(workDir, [.. authArgs, "clone", "--no-checkout", cloneUrl, "."], ct);
         }
 
         return await ResolveDefaultBranchAsync(workDir, ct);
     }
+
+    private static string[] BuildAuthArgs(string? authToken)
+    {
+        if (string.IsNullOrEmpty(authToken))
+        {
+            return [];
+        }
+        var basicAuth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"x-access-token:{authToken}"));
+        return ["-c", $"http.extraHeader=Authorization: Basic {basicAuth}"];
+    }
+
 
     private static async Task<string> ResolveDefaultBranchAsync(string workDir, CancellationToken ct)
     {
@@ -107,7 +122,7 @@ public sealed class GitClient : IGitClient
 
             if (process.ExitCode != 0)
             {
-                throw new GitCommandException($"git {string.Join(' ', args)} failed: {stderrTask.Result}");
+                throw new GitCommandException($"git {RedactArgs(args)} failed: {stderrTask.Result}");
             }
 
             return stdoutTask.Result;
@@ -118,6 +133,11 @@ public sealed class GitClient : IGitClient
             throw;
         }
     }
+
+    // Never let a credential header reach logs or exception messages.
+    private static string RedactArgs(IEnumerable<string> args) =>
+        string.Join(' ', args.Select(a =>
+            a.StartsWith("http.extraHeader=", StringComparison.OrdinalIgnoreCase) ? "http.extraHeader=<redacted>" : a));
 
     private static async Task TryKillProcessTreeAsync(Process process)
     {

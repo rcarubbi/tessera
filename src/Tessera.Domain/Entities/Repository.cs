@@ -24,6 +24,9 @@ public class Repository
     public int TotalCount { get; set; }
     public string? ErrorMessage { get; set; }
     public bool CancelRequested { get; set; }
+    public Guid? ProcessingLeaseId { get; set; }
+    public DateTimeOffset? LeaseExpiresAt { get; set; }
+    public string? WorkerInstanceId { get; set; }
     public ReprocessMode ReprocessMode { get; set; } = ReprocessMode.Full;
     public bool IncludeStaticAnalysis { get; set; }
     public bool IncludeAiAnalysis { get; set; }
