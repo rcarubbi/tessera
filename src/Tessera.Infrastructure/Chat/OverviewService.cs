@@ -105,6 +105,10 @@ public sealed class OverviewService(
                 sorted.Count,
                 DateTimeOffset.UtcNow);
         }
+        catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+        {
+            throw;
+        }
         catch (Exception) when (providers.Fallback is not null)
         {
             var fallback = providers.Fallback;
@@ -116,6 +120,10 @@ public sealed class OverviewService(
                     $"{fallback.Name}/{fallback.Model}",
                     sorted.Count,
                     DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+            {
+                throw;
             }
             catch (Exception)
             {

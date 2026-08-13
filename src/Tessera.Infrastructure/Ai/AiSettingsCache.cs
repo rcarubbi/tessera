@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Tessera.Domain.Entities;
 using Tessera.Infrastructure.Data;
 
@@ -16,15 +17,17 @@ public sealed class AiSettingsCache
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<AiSettingsCache> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AiSettingsSnapshot? _snapshot;
     private DateTimeOffset _loadedAt = DateTimeOffset.MinValue;
     private long _version;
-    private bool _refreshQueued;
+    private int _refreshQueued;
 
-    public AiSettingsCache(IServiceScopeFactory scopeFactory)
+    public AiSettingsCache(IServiceScopeFactory scopeFactory, ILogger<AiSettingsCache> logger)
     {
         _scopeFactory = scopeFactory;
+        _logger = logger;
     }
 
     public AiSettingsSnapshot GetSnapshot()
@@ -35,21 +38,36 @@ public sealed class AiSettingsCache
             return snapshot;
         }
 
-        if (snapshot is not null && !_refreshQueued)
+        if (snapshot is not null && Interlocked.CompareExchange(ref _refreshQueued, 1, 0) == 0)
         {
-            _refreshQueued = true;
-            _ = RefreshAsync();
+            _ = RefreshInBackgroundAsync();
             return snapshot;
         }
 
         return LoadSynchronously();
     }
 
-    public async Task RefreshAsync(CancellationToken ct = default)
+    // Fire-and-forget from GetSnapshot; observe any exception explicitly so it cannot surface as an
+    // unhandled exception when this task is garbage collected.
+    private async Task RefreshInBackgroundAsync()
     {
         try
         {
+            await RefreshAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Background AI settings cache refresh failed.");
+        }
+    }
+
+    public async Task RefreshAsync(CancellationToken ct = default)
+    {
+        var acquired = false;
+        try
+        {
             await _gate.WaitAsync(ct);
+            acquired = true;
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
             var settings = await db.AiSettings.AsNoTracking().OrderBy(s => s.ProviderName).ToListAsync(ct);
@@ -57,14 +75,22 @@ public sealed class AiSettingsCache
             _version++;
             _loadedAt = DateTimeOffset.UtcNow;
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             // Keep previous snapshot; allow a later refresh to retry.
+            _logger.LogWarning(ex, "AI settings cache refresh failed; keeping previous snapshot.");
         }
         finally
         {
-            _refreshQueued = false;
-            _gate.Release();
+            Interlocked.Exchange(ref _refreshQueued, 0);
+            if (acquired)
+            {
+                _gate.Release();
+            }
         }
     }
 
@@ -91,6 +117,7 @@ public sealed class AiSettingsCache
             _gate.Release();
         }
     }
+
 
     private AiSettingsSnapshot BuildSnapshot(IReadOnlyList<AiSettings> rows)
     {

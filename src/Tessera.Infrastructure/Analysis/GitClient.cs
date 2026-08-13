@@ -98,16 +98,41 @@ public sealed class GitClient : IGitClient
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start git process.");
 
-        var stdout = await process.StandardOutput.ReadToEndAsync(ct);
-        var stderr = await process.StandardError.ReadToEndAsync(ct);
-        await process.WaitForExitAsync(ct);
-
-        if (process.ExitCode != 0)
+        try
         {
-            throw new GitCommandException($"git {string.Join(' ', args)} failed: {stderr}");
-        }
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+            await Task.WhenAll(stdoutTask, stderrTask);
+            await process.WaitForExitAsync(ct);
 
-        return stdout;
+            if (process.ExitCode != 0)
+            {
+                throw new GitCommandException($"git {string.Join(' ', args)} failed: {stderrTask.Result}");
+            }
+
+            return stdoutTask.Result;
+        }
+        catch (OperationCanceledException)
+        {
+            await TryKillProcessTreeAsync(process);
+            throw;
+        }
+    }
+
+    private static async Task TryKillProcessTreeAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup; the process may have already exited or refused to terminate in time.
+        }
     }
 }
 

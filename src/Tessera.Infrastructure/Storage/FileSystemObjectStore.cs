@@ -9,7 +9,7 @@ public sealed class FileSystemObjectStore : IObjectStore
 
     public FileSystemObjectStore(string rootPath)
     {
-        _root = rootPath;
+        _root = Path.GetFullPath(rootPath);
         Directory.CreateDirectory(_root);
     }
 
@@ -42,9 +42,28 @@ public sealed class FileSystemObjectStore : IObjectStore
         return Task.FromResult(File.Exists(GetPath(key)));
     }
 
+    // Resolves a key to an absolute path guaranteed to stay inside _root, rejecting traversal and rooted keys.
     private string GetPath(string key)
     {
-        var safeKey = key.Replace('\\', '/').Trim('/');
-        return Path.Combine(_root, safeKey);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("Object store key must not be empty.", nameof(key));
+        }
+
+        var normalizedKey = key.Replace('\\', '/');
+        if (Path.IsPathRooted(normalizedKey))
+        {
+            throw new ArgumentException($"Object store key '{key}' must be a relative path.", nameof(key));
+        }
+
+        var combined = Path.GetFullPath(Path.Combine(_root, normalizedKey));
+        var rootWithSeparator = _root.EndsWith(Path.DirectorySeparatorChar) ? _root : _root + Path.DirectorySeparatorChar;
+        if (!combined.StartsWith(rootWithSeparator, StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"Object store key '{key}' resolves outside the configured root.", nameof(key));
+        }
+
+        return combined;
     }
 }
+

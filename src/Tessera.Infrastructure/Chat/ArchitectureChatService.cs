@@ -319,6 +319,10 @@ public sealed class ArchitectureChatService(
             }
             return sb.ToString();
         }
+        catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+        {
+            throw;
+        }
         catch (Exception)
         {
             return "";
@@ -486,6 +490,10 @@ public sealed class ArchitectureChatService(
                 return BuildRagResult(answer, retrieved);
             }
         }
+        catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+        {
+            throw;
+        }
         catch (Exception) when (providers.Fallback is not null)
         {
             try
@@ -495,6 +503,10 @@ public sealed class ArchitectureChatService(
                 {
                     return BuildRagResult(answer, retrieved);
                 }
+            }
+            catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+            {
+                throw;
             }
             catch (Exception)
             {
@@ -557,6 +569,10 @@ public sealed class ArchitectureChatService(
                     return BuildRagResult(answer, retrieved);
                 }
             }
+            catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+            {
+                throw;
+            }
             catch (Exception) when (providers.Fallback is not null)
             {
                 try
@@ -566,6 +582,10 @@ public sealed class ArchitectureChatService(
                     {
                         return BuildRagResult(answer, retrieved);
                     }
+                }
+                catch (Exception ex) when (RetryPolicy.IsCallerCancellation(ex, ct))
+                {
+                    throw;
                 }
                 catch (Exception)
                 {

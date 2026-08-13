@@ -88,8 +88,16 @@ public sealed class AiSettingsService(
         }
         settings.UpdatedAt = DateTimeOffset.UtcNow;
 
+        if (isNew)
+        {
+            db.AiSettings.Add(settings);
+        }
+
         if (settings.IsPrimary)
         {
+            // Serialize clear-others + set-target as one transaction; the filtered unique index on
+            // IsPrimary is the final guard against two concurrent requests both publishing a primary.
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var otherPrimaries = await db.AiSettings
                 .Where(s => s.Id != settings.Id && s.IsPrimary)
                 .ToListAsync(ct);
@@ -97,14 +105,14 @@ public sealed class AiSettingsService(
             {
                 other.IsPrimary = false;
             }
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         }
-
-        if (isNew)
+        else
         {
-            db.AiSettings.Add(settings);
+            await db.SaveChangesAsync(ct);
         }
 
-        await db.SaveChangesAsync(ct);
         await cache.RefreshAsync(ct);
 
         var snapshot = cache.GetSnapshot();
@@ -148,6 +156,7 @@ public sealed class AiSettingsService(
             .FirstOrDefaultAsync(s => s.ProviderName == providerName, ct)
             ?? throw new KeyNotFoundException($"No AI provider named '{providerName}' is configured.");
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var others = await db.AiSettings
             .Where(s => s.Id != target.Id && s.IsPrimary)
             .ToListAsync(ct);
@@ -158,6 +167,7 @@ public sealed class AiSettingsService(
         target.IsPrimary = true;
         target.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         await cache.RefreshAsync(ct);
     }
 

@@ -62,7 +62,7 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
         };
         request.Headers.Accept.ParseAdd("application/json");
 
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<OAuthTokenResponse>(ct);
         if (!string.IsNullOrEmpty(payload?.Error))
@@ -92,7 +92,7 @@ public sealed class GitHubOAuthClient : IGitHubOAuthClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(ct)
             ?? throw new InvalidOperationException($"GitHub returned no payload for {path}.");

@@ -53,7 +53,7 @@ public sealed class GitHubAppClient : IGitHubAppClient
         var jwt = CreateAppJwt();
         using var request = new HttpRequestMessage(HttpMethod.Post, $"app/installations/{installationId}/access_tokens");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<InstallationTokenResponse>(ct);
         return payload?.Token ?? throw new InvalidOperationException("GitHub returned no installation token.");
@@ -63,7 +63,7 @@ public sealed class GitHubAppClient : IGitHubAppClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "installation/repositories");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<InstallationRepositoriesResponse>(ct);
         return payload?.Repositories
@@ -91,7 +91,7 @@ public sealed class GitHubAppClient : IGitHubAppClient
             Content = JsonContent.Create(new { body })
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
             throw await GitHubApiErrorAsync("comment post", response, ct);
@@ -110,7 +110,7 @@ public sealed class GitHubAppClient : IGitHubAppClient
         var token = await CreateInstallationAccessTokenAsync(installationId, ct);
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"repos/{owner}/{repo}/issues/comments/{commentId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var response = await _http.SendAsync(request, ct);
+        using var response = await _http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
             throw await GitHubApiErrorAsync("comment delete", response, ct);
