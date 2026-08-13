@@ -86,7 +86,7 @@ public static class ReviewEndpoints
             }
             try
             {
-                var item = await reviews.EditAsync(repositoryId, nodeId, request.Content, request.EditedBy, ct);
+                var item = await reviews.EditAsync(repositoryId, nodeId, request.Content, context.GetAccess()?.Login, ct);
                 return item is null ? Results.NotFound(new { error = "Node not found." }) : Results.Ok(item);
             }
             catch (ArgumentException ex)

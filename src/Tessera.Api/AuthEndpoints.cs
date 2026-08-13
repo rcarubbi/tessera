@@ -77,6 +77,7 @@ public static class AuthEndpoints
         AccessControlService accessService,
         IGitHubOAuthClient oauth,
         IOptions<GitHubOAuthOptions> options,
+        ILogger<Program> logger,
         CancellationToken ct)
     {
         var expectedState = context.Request.Cookies[StateCookieName];
@@ -103,7 +104,9 @@ public static class AuthEndpoints
         }
         catch (Exception ex)
         {
-            return RedirectToWeb(options.Value, $"error=oauth_failed&reason={Uri.EscapeDataString(ex.Message)}");
+            var correlationId = Guid.NewGuid().ToString("N")[..8];
+            logger.LogError(ex, "GitHub OAuth callback failed (correlation {CorrelationId})", correlationId);
+            return RedirectToWeb(options.Value, $"error=oauth_failed&reason=server_error&correlation={correlationId}");
         }
 
         var user = await db.GitHubUsers.FirstOrDefaultAsync(u => u.Login == githubUser.Login, ct);
