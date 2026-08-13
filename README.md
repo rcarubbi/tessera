@@ -189,21 +189,25 @@ Tessera can also analyze a git repository that lives on the same machine — no
 GitHub App, no webhook, no push trigger. Analysis runs **only when you ask**.
 
 The worker runs inside a container, so the repository must be mounted into it
-first. There is no built-in mount: add one yourself in `docker-compose.yml`
-(worker service), e.g.
+first. There is **one** mount, a parent directory — not one per repo. Drop any
+repo folder into `repos/` on the host and it becomes visible to the worker at
+`/repos/local/<folder>`. No `docker-compose.yml` edits needed. The path is
+`${LOCAL_REPOS_DIR:-./repos}` so it can be overridden in `.env`:
 
 ```yaml
+# worker service (already in docker-compose.yml)
 volumes:
-  - ./myrepo:/repos/local/myrepo:ro
+  - ${LOCAL_REPOS_DIR:-./repos}:/repos/local:ro
 ```
 
 then:
 
-1. Open **Repositories** and click **Add local repository**.
-2. Enter a **Name** (`[A-Za-z0-9._-]`, used as the clone folder), the **path
-   inside the worker** (e.g. `/repos/local/myrepo`), and the default branch.
-3. **Add** — the card shows a `local` tag and stays inactive.
-4. Click **Analyze →** to queue the first full analysis; re-runs use the
+1. Put a git repo folder under `repos/`, e.g. `repos/MyApp/`.
+2. Open **Repositories** and click **Add local repository**.
+3. Enter a **Name** (`[A-Za-z0-9._-]`, used as the clone folder), the **path
+   inside the worker** (e.g. `/repos/local/MyApp`), and the default branch.
+4. **Add** — the card shows a `local` tag and stays inactive.
+5. Click **Analyze →** to queue the first full analysis; re-runs use the
    **Reprocess** controls on the repository's progress screen.
 
 Local repositories are visible to the user who added them and to admins. A bad

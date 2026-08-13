@@ -90,6 +90,10 @@ services:
       - objectsdata:/app/objects
       - ./secrets/tessera-app.pem:/app/secrets/tessera-app.pem:ro
       - ./e2e/origin:/repos/e2e-origin:ro
+      # Local (offline) repositories: mount one parent directory (default ./repos,
+      # override with LOCAL_REPOS_DIR in .env). Drop each repo folder in there and
+      # register it as /repos/local/<folder> — no per-repo compose edits needed.
+      - ${LOCAL_REPOS_DIR:-./repos}:/repos/local:ro
     depends_on:
       postgres:
         condition: service_healthy

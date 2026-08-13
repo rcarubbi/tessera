@@ -110,20 +110,27 @@ UPDATE "Repositories" SET "Status" = 0;
 Repositories that live on the host machine can be added from the dashboard
 (**Repositories → Add local repository**) instead of through the GitHub App.
 They are analyzed only manually (Analyze / Reprocess) — no webhook, no push
-trigger. The worker clones the URL verbatim, so mount the repository into the
-`worker` container yourself (there is no built-in mount), e.g.
+trigger. The worker clones the URL verbatim from a read-only bind mount.
+
+There is **one** mount, a parent directory — not one per repo. Any repo folder
+dropped under `repos/` on the host is visible to the worker at
+`/repos/local/<folder>`. No per-repo compose edits are needed; the path is
+`${LOCAL_REPOS_DIR:-./repos}` and can be overridden in `.env`:
 
 ```yaml
-# worker service
+# worker service (already in docker-compose.yml)
 volumes:
-  - /path/to/repo:/repos/local/<name>:ro
+  - ${LOCAL_REPOS_DIR:-./repos}:/repos/local:ro
 ```
 
-and use `/repos/local/<name>` as the path when adding it. The name becomes the
-clone folder under `Worker__WorkRoot/repos`, so it must be filesystem-safe
-(letters, digits, `.`, `-`, `_`). The API container has no git and cannot see
-the worker's mounts, so a bad path is only reported when the worker clones
-(the repository moves to `Failed` with the error message).
+Register a repo with `/repos/local/<folder>` as the path (e.g. drop
+`repos/MyApp/` and use `/repos/local/MyApp`). The name becomes the clone folder
+under `Worker__WorkRoot/repos`, so it must be filesystem-safe (letters, digits,
+`.`, `-`, `_`). The API container has no git and cannot see the worker's
+mounts, so a bad path is only reported when the worker clones (the repository
+moves to `Failed` with the error message). If a repo is moved or re-registered,
+the worker re-points its existing clone at the new URL before fetching, so
+re-runs keep working without manual clone cleanup.
 
 Local repositories are scoped to the user who added them (and admins), recorded
 in the `Repositories.CreatedBy` column.

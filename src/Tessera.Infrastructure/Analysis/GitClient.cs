@@ -21,6 +21,10 @@ public sealed class GitClient : IGitClient
         var authArgs = BuildAuthArgs(authToken);
         if (Directory.Exists(Path.Combine(workDir, ".git")))
         {
+            // Local repositories can be re-registered against a new mount path, so
+            // always re-point origin at the current URL before fetching. Without this
+            // an existing clone keeps fetching from its original (possibly dead) origin.
+            await RunAsync(workDir, ["remote", "set-url", "origin", cloneUrl], ct);
             await RunAsync(workDir, [.. authArgs, "fetch", "--all", "--prune"], ct);
         }
         else

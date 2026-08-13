@@ -13,6 +13,11 @@ out/
 work/
 objects/
 
+# Local (offline) repositories: user repo folders dropped into repos/
+# (mounted into the worker at /repos/local). Keep the README placeholder.
+repos/*
+!repos/README.md
+
 # Nested fixtures (own git repos)
 e2e/origin/
 
