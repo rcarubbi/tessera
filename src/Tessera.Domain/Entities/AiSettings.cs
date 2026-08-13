@@ -10,5 +10,6 @@ public class AiSettings
     public string Endpoint { get; set; } = "chat/completions";
     public string? EmbeddingModel { get; set; }
     public string EmbeddingEndpoint { get; set; } = "embeddings";
+    public bool IsPrimary { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

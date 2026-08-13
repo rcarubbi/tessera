@@ -28,8 +28,7 @@ GitHub (push) → Worker → clone → tree-sitter (static AST, zero cost)
 │   ├── Tessera.Api/            # ASP.NET Core Web API
 │   ├── Tessera.Worker/         # pipeline: clone → parse → analyze → snapshot
 │   ├── Tessera.Domain/         # Merkle DAG, knowledge nodes, snapshot composer
-│   ├── Tessera.Infrastructure/ # EF Core, object store, git, parser client
-│   └── Tessera.Shared/
+│   └── Tessera.Infrastructure/ # EF Core, object store, git, parser client
 ├── analyzers/                  # Node.js sidecar (web-tree-sitter, 9 grammars)
 ├── tests/
 │   ├── Tessera.Domain.Tests/   # Merkle DAG tests

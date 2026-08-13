@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -7,6 +8,9 @@ namespace Tessera.Infrastructure.Ai;
 
 public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProvider, IChatStreamProvider
 {
+    private static readonly TimeSpan SafetyNetTimeout = TimeSpan.FromSeconds(300);
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(90);
+
     private readonly HttpClient _http;
     private readonly ProviderConfig _config;
 
@@ -15,6 +19,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         _http = http;
         _config = config;
         _http.BaseAddress = new Uri(config.BaseUrl.TrimEnd('/') + "/");
+        _http.Timeout = SafetyNetTimeout;
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("tessera");
         if (!string.IsNullOrEmpty(config.ApiKey))
         {
@@ -34,14 +39,14 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
             input = text
         };
 
-        var response = await _http.PostAsJsonAsync(_config.EmbeddingEndpoint, payload, ct);
+        using var timeout = CreateTimeoutSource(ct);
+        var response = await _http.PostAsJsonAsync(_config.EmbeddingEndpoint, payload, timeout.Token);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            throw new ChatProviderException($"Provider '{_config.Name}' returned {(int)response.StatusCode}: {errorBody}");
+            throw await BuildErrorAsync(response, timeout.Token);
         }
 
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
         if (doc.RootElement.TryGetProperty("data", out var data)
             && data.GetArrayLength() > 0
             && data[0].TryGetProperty("embedding", out var embedding))
@@ -68,14 +73,14 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
             max_tokens = 1500
         };
 
-        var response = await _http.PostAsJsonAsync(_config.Endpoint, payload, ct);
+        using var timeout = CreateTimeoutSource(ct);
+        var response = await _http.PostAsJsonAsync(_config.Endpoint, payload, timeout.Token);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            throw new ChatProviderException($"Provider '{_config.Name}' returned {(int)response.StatusCode}: {errorBody}");
+            throw await BuildErrorAsync(response, timeout.Token);
         }
 
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
         if (doc.RootElement.TryGetProperty("choices", out var choices)
             && choices.GetArrayLength() > 0
             && choices[0].TryGetProperty("message", out var message)
@@ -107,8 +112,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            throw new ChatProviderException($"Provider '{_config.Name}' returned {(int)response.StatusCode}: {errorBody}");
+            throw await BuildErrorAsync(response, ct);
         }
 
         using var body = await response.Content.ReadAsStreamAsync(ct);
@@ -137,6 +141,28 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
         }
     }
 
+    private static CancellationTokenSource CreateTimeoutSource(CancellationToken ct)
+    {
+        var source = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        source.CancelAfter(RequestTimeout);
+        return source;
+    }
+
+    private async Task<ChatProviderException> BuildErrorAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var errorBody = await response.Content.ReadAsStringAsync(ct);
+        TimeSpan? retryAfter = null;
+        if (response.Headers.RetryAfter is { } retryAfterHeader)
+        {
+            retryAfter = retryAfterHeader.Delta
+                ?? (retryAfterHeader.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+        }
+        return new ChatProviderException(
+            $"Provider '{_config.Name}' returned {(int)response.StatusCode}: {errorBody}",
+            statusCode: response.StatusCode,
+            retryAfter: retryAfter);
+    }
+
     private static bool TryParseDelta(string data, out string? delta)
     {
         delta = null;
@@ -159,4 +185,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider, IEmbeddingProv
     }
 }
 
-public sealed class ChatProviderException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class ChatProviderException(string message, Exception? inner = null, HttpStatusCode? statusCode = null, TimeSpan? retryAfter = null) : Exception(message, inner)
+{
+    public HttpStatusCode? StatusCode { get; } = statusCode;
+    public TimeSpan? RetryAfter { get; } = retryAfter;
+}

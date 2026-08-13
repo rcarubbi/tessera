@@ -3,7 +3,6 @@
     <Project Path="src/Tessera.Api/Tessera.Api.csproj" />
     <Project Path="src/Tessera.Domain/Tessera.Domain.csproj" />
     <Project Path="src/Tessera.Infrastructure/Tessera.Infrastructure.csproj" />
-    <Project Path="src/Tessera.Shared/Tessera.Shared.csproj" />
     <Project Path="src/Tessera.Worker/Tessera.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">

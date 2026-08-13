@@ -153,6 +153,7 @@ public class TesseraDbContext : DbContext
             e.HasKey(s => s.Id);
             e.Property(s => s.BaseUrl).HasMaxLength(512);
             e.Property(s => s.ApiKey).HasMaxLength(512);
+            e.HasIndex(s => s.ProviderName).IsUnique();
         });
 
         modelBuilder.Entity<PullRequestReview>(e =>

@@ -75,13 +75,14 @@ services:
       ConnectionStrings__TesseraDb: "Host=postgres;Port=5432;Database=tessera;Username=tessera;Password=tessera"
       Sidecar__BaseUrl: "http://analyzers:4350"
       Worker__WorkRoot: "/app/work"
-      Worker__MaxFilesPerBatch: "200"
+      Worker__MaxFilesPerBatch: "1000"
       ObjectStore__Root: "/app/objects"
       # GitHub App config (used to clone private repositories with an installation token):
       GitHub__AppId: "${GITHUB_APP_ID:-}"
       GitHub__PrivateKeyPath: "/app/secrets/tessera-app.pem"
       # LLM provider is configured via Settings > AI (stored in the database).
       # Ai__RequestsPerMinute: "12"
+      Ai__RequestsPerMinute: "20"
     volumes:
       - workdata:/app/work
       - objectsdata:/app/objects
@@ -117,7 +118,24 @@ services:
     cpus: 0.5
     mem_limit: 512m
 
+  copilot-bridge:
+    image: ghcr.io/whtsky/copilot2api:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7777:7777"
+    volumes:
+      - copilot2api-data:/root/.config/copilot2api
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: 256m
+    # First run performs GitHub Device Flow authentication; complete it via
+    # `docker compose logs -f copilot-bridge`. Exposes OpenAI-compatible /v1
+    # (chat/completions, embeddings, streaming) without validating API keys,
+    # so the port is bound to localhost only.
+
 volumes:
   pgdata:
   workdata:
   objectsdata:
+  copilot2api-data:

@@ -11,7 +11,8 @@ public sealed record AiSettingsRequest(
     string? ApiKey,
     string? Endpoint,
     string? EmbeddingModel,
-    string? EmbeddingEndpoint);
+    string? EmbeddingEndpoint,
+    bool IsPrimary = false);
 
 public sealed record AiSettingsResponse(
     string ProviderName,
@@ -22,7 +23,10 @@ public sealed record AiSettingsResponse(
     string? Endpoint,
     string? EmbeddingModel,
     string? EmbeddingEndpoint,
+    bool IsPrimary,
     DateTimeOffset? UpdatedAt);
+
+public sealed record AiSettingsListResponse(IReadOnlyList<AiSettingsResponse> Providers);
 
 public sealed class AiSettingsService(
     TesseraDbContext db,
@@ -37,10 +41,8 @@ public sealed class AiSettingsService(
         return key.Length <= 8 ? "••••••••" : $"{key[..3]}••••{key[^3..]}";
     }
 
-    public Task<AiSettingsResponse> GetAsync(CancellationToken ct = default)
-    {
-        return Task.FromResult(ToResponse(cache.GetSnapshot()));
-    }
+    public Task<AiSettingsListResponse> GetAsync(CancellationToken ct = default)
+        => Task.FromResult(new AiSettingsListResponse(ToResponseList(cache.GetSnapshot())));
 
     public async Task<AiSettingsResponse> SaveAsync(AiSettingsRequest request, CancellationToken ct = default)
     {
@@ -57,30 +59,20 @@ public sealed class AiSettingsService(
             throw new ArgumentException("model is required.");
         }
 
-        var settings = await db.AiSettings.FirstOrDefaultAsync(ct);
+        var providerName = request.ProviderName.Trim();
+        var settings = await db.AiSettings.FirstOrDefaultAsync(s => s.ProviderName == providerName, ct);
         var isNew = settings is null;
-        settings ??= new AiSettings { Id = Guid.NewGuid() };
+        settings ??= new AiSettings { Id = Guid.NewGuid(), ProviderName = providerName };
 
-        if (isNew && string.IsNullOrWhiteSpace(request.ApiKey))
-        {
-            throw new ArgumentException("api key is required when no key is stored yet.");
-        }
-
-        settings.ProviderName = request.ProviderName.Trim();
         settings.BaseUrl = request.BaseUrl.Trim().TrimEnd('/');
         settings.Model = request.Model.Trim();
         if (!string.IsNullOrWhiteSpace(request.Endpoint))
         {
             settings.Endpoint = request.Endpoint.Trim();
         }
-        if (string.IsNullOrWhiteSpace(request.EmbeddingModel))
-        {
-            settings.EmbeddingModel = null;
-        }
-        else
-        {
-            settings.EmbeddingModel = request.EmbeddingModel.Trim();
-        }
+        settings.EmbeddingModel = string.IsNullOrWhiteSpace(request.EmbeddingModel)
+            ? null
+            : request.EmbeddingModel.Trim();
         if (!string.IsNullOrWhiteSpace(request.EmbeddingEndpoint))
         {
             settings.EmbeddingEndpoint = request.EmbeddingEndpoint.Trim();
@@ -89,7 +81,23 @@ public sealed class AiSettingsService(
         {
             settings.ApiKey = request.ApiKey.Trim();
         }
+
+        if (request.IsPrimary || isNew && !await db.AiSettings.AnyAsync(ct))
+        {
+            settings.IsPrimary = true;
+        }
         settings.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (settings.IsPrimary)
+        {
+            var otherPrimaries = await db.AiSettings
+                .Where(s => s.Id != settings.Id && s.IsPrimary)
+                .ToListAsync(ct);
+            foreach (var other in otherPrimaries)
+            {
+                other.IsPrimary = false;
+            }
+        }
 
         if (isNew)
         {
@@ -99,21 +107,76 @@ public sealed class AiSettingsService(
         await db.SaveChangesAsync(ct);
         await cache.RefreshAsync(ct);
 
-        return ToResponse(cache.GetSnapshot());
+        var snapshot = cache.GetSnapshot();
+        var saved = snapshot.Providers.FirstOrDefault(p =>
+            string.Equals(p.Name, providerName, StringComparison.OrdinalIgnoreCase));
+        return saved is null
+            ? throw new InvalidOperationException($"Provider '{providerName}' did not appear in the settings cache after save.")
+            : ToResponse(saved, settings.IsPrimary, settings.UpdatedAt);
     }
 
-    private static AiSettingsResponse ToResponse(AiSettingsSnapshot snapshot)
+    public async Task DeleteAsync(string providerName, CancellationToken ct = default)
     {
-        var provider = snapshot.Providers.FirstOrDefault(p =>
-            string.Equals(p.Name, snapshot.Primary, StringComparison.OrdinalIgnoreCase))
-            ?? snapshot.Providers.FirstOrDefault();
-
-        if (provider is null)
+        var settings = await db.AiSettings
+            .FirstOrDefaultAsync(s => s.ProviderName == providerName, ct);
+        if (settings is null)
         {
-            return new AiSettingsResponse("", "", "", null, false, null, null, null, snapshot.UpdatedAt);
+            return;
         }
 
-        return new AiSettingsResponse(
+        var wasPrimary = settings.IsPrimary;
+        db.AiSettings.Remove(settings);
+
+        if (wasPrimary)
+        {
+            var replacement = await db.AiSettings
+                .OrderBy(s => s.UpdatedAt)
+                .FirstOrDefaultAsync(s => s.Id != settings.Id, ct);
+            if (replacement is not null)
+            {
+                replacement.IsPrimary = true;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        await cache.RefreshAsync(ct);
+    }
+
+    public async Task SetPrimaryAsync(string providerName, CancellationToken ct = default)
+    {
+        var target = await db.AiSettings
+            .FirstOrDefaultAsync(s => s.ProviderName == providerName, ct)
+            ?? throw new KeyNotFoundException($"No AI provider named '{providerName}' is configured.");
+
+        var others = await db.AiSettings
+            .Where(s => s.Id != target.Id && s.IsPrimary)
+            .ToListAsync(ct);
+        foreach (var other in others)
+        {
+            other.IsPrimary = false;
+        }
+        target.IsPrimary = true;
+        target.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await cache.RefreshAsync(ct);
+    }
+
+    private static IReadOnlyList<AiSettingsResponse> ToResponseList(AiSettingsSnapshot snapshot)
+    {
+        var primaries = new HashSet<string>(
+            snapshot.Providers.Where(p => string.Equals(p.Name, snapshot.Primary, StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.Name),
+            StringComparer.OrdinalIgnoreCase);
+        return snapshot.Providers
+            .Select(p => ToResponse(p, primaries.Contains(p.Name), snapshot.UpdatedAt))
+            .ToList();
+    }
+
+    private static AiSettingsResponse ToResponse(
+        ProviderConfig provider,
+        bool isPrimary,
+        DateTimeOffset? updatedAt) =>
+        new(
             provider.Name,
             provider.BaseUrl,
             provider.Model,
@@ -122,6 +185,6 @@ public sealed class AiSettingsService(
             provider.Endpoint,
             provider.EmbeddingModel,
             provider.EmbeddingEndpoint,
-            snapshot.UpdatedAt);
-    }
+            isPrimary,
+            updatedAt);
 }

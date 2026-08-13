@@ -12,7 +12,6 @@ Tessera ingests Git repositories and builds a knowledge graph: nodes (classes, i
 - `src/Tessera.Infrastructure` — adapters: EF Core (`Data/`, `Migrations/`), AI providers (`Ai/`, `Chat/`), analysis (`Analysis/`), queries (`Queries/`), GitHub, Auth, Reviews, Storage.
 - `src/Tessera.Api` — minimal API. Endpoint groups in static classes: `AuthEndpoints`, `ChatEndpoints`, `GitHubEndpoints`, `QueryEndpoints`, `ReviewEndpoints`, `SettingsEndpoints`; DI + route mapping in `Program.cs`.
 - `src/Tessera.Worker` — background processing: `JobProcessor` (poll loop) and `Pipeline/AnalysisPipeline` (staged pipeline with progress + cancellation).
-- `src/Tessera.Shared` — shared contracts between services.
 - `tests/Tessera.Domain.Tests`, `tests/Tessera.Integration.Tests` — xUnit; integration tests use in-memory DB and fake provider registries.
 - `analyzers/` — Node.js parse sidecar (`src/analyzer.js`, `src/index.js`); tests with `node:test` in `test/batch.test.js`.
 - `web/` — Next.js 15 App Router client app (React 19, TypeScript strict, Tailwind v4, Preline UI).

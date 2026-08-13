@@ -98,7 +98,37 @@ public sealed class ArchitectureChatTests
     }
 
     [Fact]
-    public async Task Embedding_retrieval_scores_by_cosine_and_caches()
+    public async Task Embedding_retrieval_scores_by_cosine_when_embeddings_cached()
+    {
+        using var db = ChatSeed.CreateDb();
+        await ChatSeed.SeedAsync(db, ChatSeed.OrderGraphSnapshot());
+        await SeedBoxEmbeddingsAsync(db);
+
+        var embedding = new FakeEmbedding(ChatSeed.BoxEmbeddingHandler);
+        var retrieval = new RetrievalService(db, ChatSeed.Registry(embedding: embedding));
+        var results = await retrieval.RetrieveAsync(ChatSeed.RepoId, null, "how does order work?", 5, 0.5);
+
+        Assert.Equal("Order", results[0].Node.Symbol);
+        Assert.Equal(1, embedding.Calls);
+    }
+
+    [Fact]
+    public async Task Semantic_retrieval_scores_all_nodes_even_when_no_token_matches()
+    {
+        using var db = ChatSeed.CreateDb();
+        await ChatSeed.SeedAsync(db, ChatSeed.OrderGraphSnapshot());
+        await SeedBoxEmbeddingsAsync(db);
+
+        var embedding = new FakeEmbedding(ChatSeed.BoxEmbeddingHandler);
+        var retrieval = new RetrievalService(db, ChatSeed.Registry(embedding: embedding));
+        var results = await retrieval.RetrieveAsync(ChatSeed.RepoId, null, "what is the tech stack of this project?", 5, 0.0);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(1, embedding.Calls);
+    }
+
+    [Fact]
+    public async Task Embedding_retrieval_falls_back_to_lexical_when_embeddings_missing()
     {
         using var db = ChatSeed.CreateDb();
         await ChatSeed.SeedAsync(db, ChatSeed.OrderGraphSnapshot());
@@ -107,10 +137,36 @@ public sealed class ArchitectureChatTests
         var retrieval = new RetrievalService(db, ChatSeed.Registry(embedding: embedding));
         var results = await retrieval.RetrieveAsync(ChatSeed.RepoId, null, "how does order work?", 5, 0.5);
 
-        Assert.Equal("Order", results[0].Node.Symbol);
-        var embeddings = await db.NodeEmbeddings.ToListAsync();
-        Assert.Equal(2, embeddings.Count);
-        Assert.All(embeddings, e => Assert.Equal(3, e.Dimensions));
+        Assert.NotEmpty(results);
+        Assert.Equal(0, embedding.Calls);
+        Assert.Empty(await db.NodeEmbeddings.ToListAsync());
+    }
+
+    private static async Task SeedBoxEmbeddingsAsync(TesseraDbContext db)
+    {
+        foreach (var node in await db.KnowledgeNodes.ToListAsync())
+        {
+            var text = $"{node.Symbol}\n{node.Path} lines {node.StartLine}-{node.EndLine}\n{node.Content}";
+            db.NodeEmbeddings.Add(new NodeEmbedding
+            {
+                Id = Guid.NewGuid(),
+                NodeId = node.Id,
+                SnapshotId = node.SnapshotId,
+                RepositoryId = ChatSeed.RepoId,
+                Model = "embed-model",
+                Dimensions = 3,
+                Vector = Pack(ChatSeed.BoxEmbeddingHandler(text)),
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+    }
+
+    private static byte[] Pack(float[] values)
+    {
+        var bytes = new byte[values.Length * sizeof(float)];
+        Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
+        return bytes;
     }
 
     [Fact]

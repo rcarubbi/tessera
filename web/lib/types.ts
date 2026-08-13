@@ -259,7 +259,12 @@ export type AiSettings = {
   endpoint: string | null;
   embeddingModel: string | null;
   embeddingEndpoint: string | null;
+  isPrimary: boolean;
   updatedAt: string | null;
+};
+
+export type AiSettingsList = {
+  providers: AiSettings[];
 };
 
 export type AiSettingsRequest = {
@@ -270,4 +275,5 @@ export type AiSettingsRequest = {
   endpoint?: string | null;
   embeddingModel?: string | null;
   embeddingEndpoint?: string | null;
+  isPrimary?: boolean;
 };

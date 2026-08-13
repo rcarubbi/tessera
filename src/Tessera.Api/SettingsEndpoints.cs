@@ -68,6 +68,51 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        app.MapDelete("/api/settings/ai/{providerName}", async (
+            string providerName,
+            HttpContext context,
+            AiSettingsService settings,
+            CancellationToken ct) =>
+        {
+            var access = context.GetAccess();
+            if (access is null)
+            {
+                return Results.Unauthorized();
+            }
+            if (!access.IsAdmin)
+            {
+                return Results.Json(new { error = "Only administrators can change AI settings." }, statusCode: 403);
+            }
+            await settings.DeleteAsync(providerName, ct);
+            return Results.NoContent();
+        });
+
+        app.MapPost("/api/settings/ai/{providerName}/primary", async (
+            string providerName,
+            HttpContext context,
+            AiSettingsService settings,
+            CancellationToken ct) =>
+        {
+            var access = context.GetAccess();
+            if (access is null)
+            {
+                return Results.Unauthorized();
+            }
+            if (!access.IsAdmin)
+            {
+                return Results.Json(new { error = "Only administrators can change AI settings." }, statusCode: 403);
+            }
+            try
+            {
+                await settings.SetPrimaryAsync(providerName, ct);
+                return Results.NoContent();
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        });
     }
 }
 

@@ -52,7 +52,7 @@ public sealed class AiSettingsCache
             await _gate.WaitAsync(ct);
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
-            var settings = await db.AiSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+            var settings = await db.AiSettings.AsNoTracking().OrderBy(s => s.ProviderName).ToListAsync(ct);
             _snapshot = BuildSnapshot(settings);
             _version++;
             _loadedAt = DateTimeOffset.UtcNow;
@@ -80,7 +80,7 @@ public sealed class AiSettingsCache
 
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
-            var settings = db.AiSettings.AsNoTracking().FirstOrDefault();
+            var settings = db.AiSettings.AsNoTracking().OrderBy(s => s.ProviderName).ToList();
             _snapshot = BuildSnapshot(settings);
             _version++;
             _loadedAt = DateTimeOffset.UtcNow;
@@ -92,24 +92,31 @@ public sealed class AiSettingsCache
         }
     }
 
-    private AiSettingsSnapshot BuildSnapshot(AiSettings? settings)
+    private AiSettingsSnapshot BuildSnapshot(IReadOnlyList<AiSettings> rows)
     {
-        if (settings is null || string.IsNullOrWhiteSpace(settings.BaseUrl))
+        var providers = new List<ProviderConfig>(rows.Count);
+        foreach (var settings in rows)
         {
-            return new AiSettingsSnapshot(Array.Empty<ProviderConfig>(), null, _version, settings?.UpdatedAt);
+            if (string.IsNullOrWhiteSpace(settings.BaseUrl))
+            {
+                continue;
+            }
+            providers.Add(new ProviderConfig
+            {
+                Name = settings.ProviderName,
+                BaseUrl = settings.BaseUrl,
+                Model = settings.Model,
+                ApiKey = settings.ApiKey,
+                Endpoint = string.IsNullOrWhiteSpace(settings.Endpoint) ? "chat/completions" : settings.Endpoint,
+                EmbeddingModel = settings.EmbeddingModel,
+                EmbeddingEndpoint = string.IsNullOrWhiteSpace(settings.EmbeddingEndpoint) ? "embeddings" : settings.EmbeddingEndpoint
+            });
         }
 
-        var provider = new ProviderConfig
-        {
-            Name = settings.ProviderName,
-            BaseUrl = settings.BaseUrl,
-            Model = settings.Model,
-            ApiKey = settings.ApiKey,
-            Endpoint = string.IsNullOrWhiteSpace(settings.Endpoint) ? "chat/completions" : settings.Endpoint,
-            EmbeddingModel = settings.EmbeddingModel,
-            EmbeddingEndpoint = string.IsNullOrWhiteSpace(settings.EmbeddingEndpoint) ? "embeddings" : settings.EmbeddingEndpoint
-        };
+        var primary = rows.FirstOrDefault(r => r.IsPrimary && !string.IsNullOrWhiteSpace(r.BaseUrl))?.ProviderName
+            ?? providers.FirstOrDefault()?.Name;
+        var updatedAt = rows.Count == 0 ? null : (DateTimeOffset?)rows.Max(r => r.UpdatedAt);
 
-        return new AiSettingsSnapshot([provider], settings.ProviderName, _version, settings.UpdatedAt);
+        return new AiSettingsSnapshot(providers, primary, _version, updatedAt);
     }
 }

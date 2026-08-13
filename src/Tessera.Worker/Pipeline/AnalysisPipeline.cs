@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
@@ -30,6 +31,8 @@ public sealed class AnalysisPipeline(
     IGitHubAppClient github,
     IOverviewService overviewService,
     IArchitectureLinkingService linkingService,
+    IEmbeddingGenerator embeddingGenerator,
+    ILogger<AnalysisPipeline> log,
     IOptions<AnalysisPipelineOptions> options,
     IOptions<AiOptions> aiOptions,
     IOptions<GitHubOptions> githubOptions)
@@ -122,6 +125,7 @@ public sealed class AnalysisPipeline(
             }
 
             await PersistAsync(repo, snapshotId, head, composed, aiContent, ct);
+            await GenerateEmbeddingsAsync(repo, snapshotId, composed, ct);
             await GenerateOverviewAsync(repo, snapshotId, composed, ct);
 
             repo.Status = ProcessingStatus.Completed;
@@ -469,6 +473,27 @@ public sealed class AnalysisPipeline(
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+    }
+
+    private async Task GenerateEmbeddingsAsync(
+        Repository repo,
+        Guid snapshotId,
+        ComposedSnapshot composed,
+        CancellationToken ct)
+    {
+        try
+        {
+            var generated = await embeddingGenerator.GenerateAsync(snapshotId, repo.Id, composed.Nodes, ct);
+            if (generated > 0)
+            {
+                log.LogInformation("Generated {count} embeddings for snapshot {snapshotId}", generated, snapshotId);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Embedding generation must never fail the analysis; chat falls back to lexical scoring.
+            log.LogWarning(ex, "Embedding generation failed for snapshot {snapshotId}", snapshotId);
+        }
     }
 
     private async Task GenerateOverviewAsync(

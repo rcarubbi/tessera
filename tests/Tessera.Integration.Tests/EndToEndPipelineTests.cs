@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
@@ -302,6 +303,8 @@ public sealed class EndToEndPipelineTests : IDisposable
             new NoopGitHubAppClient(),
             new NoopOverviewService(),
             new NoopLinkingService(),
+            new NoopEmbeddingGenerator(),
+            new NullLogger<AnalysisPipeline>(),
             Options.Create(new AnalysisPipelineOptions { WorkRoot = _workRoot }),
             Options.Create(new AiOptions { ReviewThreshold = 0.7 }),
             Options.Create(new GitHubOptions()));
@@ -321,6 +324,16 @@ public sealed class EndToEndPipelineTests : IDisposable
     {
         public Task<IReadOnlyList<LinkedEdge>> LinkAsync(ParseResult parse, long repositoryId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<LinkedEdge>>(Array.Empty<LinkedEdge>());
+    }
+
+    private sealed class NoopEmbeddingGenerator : IEmbeddingGenerator
+    {
+        public Task<int> GenerateAsync(
+            Guid snapshotId,
+            Guid repositoryId,
+            IReadOnlyList<KnowledgeNode> nodes,
+            CancellationToken ct = default) =>
+            Task.FromResult(0);
     }
 
     private TesseraDbContext CreateDb()

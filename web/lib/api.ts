@@ -75,6 +75,19 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    headers: await headers(),
+    cache: "no-store",
+  });
+  if (res.status === 401) throw new ApiError(401, "Unauthorized");
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(res.status, text || res.statusText);
+  }
+}
+
 export type ChatStreamEvent = {
   kind: "mode" | "warnings" | "delta" | "citations" | "error";
   mode?: string;

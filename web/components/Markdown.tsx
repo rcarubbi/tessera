@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Mermaid from "@/components/Mermaid";
 
-export default function Markdown({ children }: { children: string }) {
+function Markdown({ children }: { children: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -27,3 +28,5 @@ export default function Markdown({ children }: { children: string }) {
     </ReactMarkdown>
   );
 }
+
+export default memo(Markdown);

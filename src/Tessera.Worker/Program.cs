@@ -22,6 +22,7 @@ builder.Services.AddSingleton<IGitClient, GitClient>();
 builder.Services.AddScoped<IParserSidecarClient, ParserSidecarClient>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
 builder.Services.AddScoped<IArchitectureLinkingService, ArchitectureLinkingService>();
+builder.Services.AddScoped<IEmbeddingGenerator, EmbeddingGenerator>();
 builder.Services.AddScoped<AnalysisPipeline>();
 builder.Services.AddScoped<GraphQueryService>();
 builder.Services.AddScoped<ArchitectureRuleService>();

@@ -35,7 +35,7 @@ public sealed class ProviderRegistry : IProviderRegistry
             {
                 _version = snapshot.Version;
                 _providers = snapshot.Providers
-                    .Where(p => !string.IsNullOrEmpty(p.Name) && !string.IsNullOrEmpty(p.BaseUrl) && !string.IsNullOrEmpty(p.ApiKey))
+                    .Where(p => !string.IsNullOrEmpty(p.Name) && !string.IsNullOrEmpty(p.BaseUrl))
                     .ToDictionary(
                         p => p.Name,
                         p => (IChatProvider)new OpenAiCompatibleChatProvider(_factory.CreateClient($"ai-{p.Name}"), p),
@@ -50,17 +50,37 @@ public sealed class ProviderRegistry : IProviderRegistry
 
     public IChatProvider? Primary => Get(_cache.GetSnapshot().Primary) ?? Providers.Values.FirstOrDefault();
 
-    public IChatProvider? LargeTier => null;
+    public IChatProvider? LargeTier => Fallback ?? Primary;
 
-    public IChatProvider? Fallback => null;
+    public IChatProvider? Fallback
+    {
+        get
+        {
+            var primary = Primary;
+            return primary is null
+                ? null
+                : Providers.Values.FirstOrDefault(p =>
+                    !string.Equals(p.Name, primary.Name, StringComparison.OrdinalIgnoreCase));
+        }
+    }
 
-    public IEmbeddingProvider? Embedding => Primary as IEmbeddingProvider;
+    public IEmbeddingProvider? Embedding
+    {
+        get
+        {
+            var name = _cache.GetSnapshot().Providers.FirstOrDefault(p => !string.IsNullOrEmpty(p.EmbeddingModel))?.Name;
+            return name is null ? null : Get(name) as IEmbeddingProvider;
+        }
+    }
 
     public int Count => Providers.Count;
 }
 
 public static class RetryPolicy
 {
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan MaxTotalDelay = TimeSpan.FromSeconds(12);
+
     public static async Task<T> WithRetryAsync<T>(
         Func<CancellationToken, Task<T>> action,
         int maxRetries,
@@ -68,33 +88,63 @@ public static class RetryPolicy
         CancellationToken ct = default)
     {
         var delay = baseDelay ?? TimeSpan.FromSeconds(1);
+        var totalWait = TimeSpan.Zero;
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 return await action(ct);
             }
-            catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
+            catch (Exception ex) when (attempt < maxRetries && TryGetRetryDelay(ex, delay, attempt, out var wait))
             {
-                await Task.Delay(delay * (1 << attempt) + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250)), ct);
+                if (totalWait + wait > MaxTotalDelay)
+                {
+                    throw;
+                }
+                totalWait += wait;
+                await Task.Delay(wait, ct);
             }
         }
     }
 
-    private static bool IsTransient(Exception ex)
+    private static bool TryGetRetryDelay(Exception ex, TimeSpan baseDelay, int attempt, out TimeSpan delay)
     {
+        delay = default;
         if (ex is TimeoutException or IOException or TaskCanceledException)
         {
+            delay = Cap(baseDelay * (1 << attempt));
             return true;
         }
-        if (ex is ChatProviderException { InnerException: HttpRequestException inner })
+        if (ex is ChatProviderException { StatusCode: { } status } cpe)
         {
-            ex = inner;
+            if (status == HttpStatusCode.TooManyRequests)
+            {
+                delay = cpe.RetryAfter ?? Cap(baseDelay * (1 << attempt));
+                if (delay > TimeSpan.FromSeconds(5))
+                {
+                    // Hard quota exhaustion: retrying would only make it worse.
+                    return false;
+                }
+                if (delay <= TimeSpan.Zero)
+                {
+                    delay = TimeSpan.FromSeconds(1);
+                }
+                return true;
+            }
+            if (status >= HttpStatusCode.InternalServerError)
+            {
+                delay = Cap(baseDelay * (1 << attempt));
+                return true;
+            }
+            return false;
         }
-        if (ex is HttpRequestException { StatusCode: { } status })
+        if (ex is HttpRequestException)
         {
-            return status is HttpStatusCode.TooManyRequests or >= HttpStatusCode.InternalServerError;
+            delay = Cap(baseDelay * (1 << attempt));
+            return true;
         }
-        return ex is HttpRequestException;
+        return false;
     }
+
+    private static TimeSpan Cap(TimeSpan value) => value > MaxRetryDelay ? MaxRetryDelay : value;
 }

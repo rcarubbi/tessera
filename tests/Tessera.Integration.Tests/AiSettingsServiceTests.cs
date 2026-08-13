@@ -17,11 +17,7 @@ public sealed class AiSettingsServiceTests
 
         var result = await service.GetAsync();
 
-        Assert.Equal("", result.ProviderName);
-        Assert.Equal("", result.BaseUrl);
-        Assert.False(result.HasApiKey);
-        Assert.Null(result.ApiKeyMasked);
-        Assert.Null(result.UpdatedAt);
+        Assert.Empty(result.Providers);
     }
 
     [Fact]
@@ -39,6 +35,7 @@ public sealed class AiSettingsServiceTests
         Assert.True(result.HasApiKey);
         Assert.NotNull(result.ApiKeyMasked);
         Assert.NotNull(result.UpdatedAt);
+        Assert.True(result.IsPrimary);
         Assert.DoesNotContain("1234", result.ApiKeyMasked);
 
         var row = await ctx.Db.AiSettings.AsNoTracking().SingleAsync();
@@ -46,6 +43,7 @@ public sealed class AiSettingsServiceTests
         Assert.Equal("chat/completions", row.Endpoint);
         Assert.Equal("embeddings", row.EmbeddingEndpoint);
         Assert.Null(row.EmbeddingModel);
+        Assert.True(row.IsPrimary);
         Assert.NotEqual(default, row.UpdatedAt);
     }
 
@@ -64,13 +62,15 @@ public sealed class AiSettingsServiceTests
     }
 
     [Fact]
-    public async Task SaveAsync_requires_api_key_on_first_save()
+    public async Task SaveAsync_allows_provider_without_api_key()
     {
         using var ctx = CreateContext();
         var service = new AiSettingsService(ctx.Db, ctx.Cache);
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.SaveAsync(new AiSettingsRequest("gemini", "https://x", "model", null, null, null, null)));
+        var result = await service.SaveAsync(new AiSettingsRequest("ollama", "http://localhost:11434/v1", "qwen2.5-coder:7b", null, null, null, null));
+
+        Assert.Equal("ollama", result.ProviderName);
+        Assert.False(result.HasApiKey);
     }
 
     [Fact]
@@ -86,6 +86,50 @@ public sealed class AiSettingsServiceTests
         var row = await ctx.Db.AiSettings.AsNoTracking().SingleAsync();
         Assert.Equal("stored-key", row.ApiKey);
         Assert.Equal("model-b", row.Model);
+    }
+
+    [Fact]
+    public async Task SaveAsync_second_provider_is_not_primary_by_default()
+    {
+        using var ctx = CreateContext();
+        var service = new AiSettingsService(ctx.Db, ctx.Cache);
+        await service.SaveAsync(new AiSettingsRequest("github-copilot", "https://api.githubcopilot.com", "gpt-4o-mini", "key-a", null, null, null));
+        await service.SaveAsync(new AiSettingsRequest("copilot-cli", "http://localhost:7777/v1", "gpt-4o-mini", null, null, null, null));
+
+        var result = await service.GetAsync();
+
+        Assert.Equal(2, result.Providers.Count);
+        Assert.Equal("github-copilot", result.Providers.Single(p => p.IsPrimary).ProviderName);
+    }
+
+    [Fact]
+    public async Task SetPrimaryAsync_switches_primary()
+    {
+        using var ctx = CreateContext();
+        var service = new AiSettingsService(ctx.Db, ctx.Cache);
+        await service.SaveAsync(new AiSettingsRequest("gemini", "https://x", "model-a", "key-a", null, null, null));
+        await service.SaveAsync(new AiSettingsRequest("openai", "https://x", "model-b", "key-b", null, null, null));
+
+        await service.SetPrimaryAsync("openai");
+
+        var result = await service.GetAsync();
+        Assert.Equal("openai", result.Providers.Single(p => p.IsPrimary).ProviderName);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_removes_provider_and_promotes_replacement()
+    {
+        using var ctx = CreateContext();
+        var service = new AiSettingsService(ctx.Db, ctx.Cache);
+        await service.SaveAsync(new AiSettingsRequest("gemini", "https://x", "model-a", "key-a", null, null, null));
+        await service.SaveAsync(new AiSettingsRequest("openai", "https://x", "model-b", "key-b", null, null, null));
+
+        await service.DeleteAsync("gemini");
+
+        var result = await service.GetAsync();
+        var provider = Assert.Single(result.Providers);
+        Assert.Equal("openai", provider.ProviderName);
+        Assert.True(provider.IsPrimary);
     }
 
     [Fact]

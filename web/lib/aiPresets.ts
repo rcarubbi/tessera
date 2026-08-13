@@ -13,6 +13,18 @@ export const AI_PRESETS: AiPreset[] = [
     defaultModel: "gemini-3.5-flash-lite",
   },
   {
+    name: "github-copilot",
+    label: "GitHub Copilot",
+    baseUrl: "https://api.githubcopilot.com",
+    defaultModel: "gpt-4o",
+  },
+  {
+    name: "copilot-cli",
+    label: "GitHub Copilot (local bridge)",
+    baseUrl: "http://localhost:7777/v1",
+    defaultModel: "gpt-4o-mini",
+  },
+  {
     name: "openai",
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",

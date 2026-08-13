@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Tessera.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Tessera.Infrastructure.Data;
 namespace Tessera.Infrastructure.Migrations
 {
     [DbContext(typeof(TesseraDbContext))]
-    partial class TesseraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811134458_AddAiProviderPrimary")]
+    partial class AddAiProviderPrimary
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -136,50 +139,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.HasIndex("RepositoryId", "CreatedAt");
 
                     b.ToTable("ConversationMessages");
-                });
-
-            modelBuilder.Entity("Tessera.Domain.Entities.EdgeHistory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("FromKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("IntroducedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("IntroducedCommitSha")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("IntroducedSnapshotId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("Live")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid>("RepositoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ToKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RepositoryId", "Live");
-
-                    b.HasIndex("RepositoryId", "FromKey", "ToKey", "Type")
-                        .IsUnique()
-                        .HasFilter("\"Live\" = true");
-
-                    b.ToTable("EdgeHistories");
                 });
 
             modelBuilder.Entity("Tessera.Domain.Entities.GitHubInstallation", b =>
@@ -518,54 +477,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.ToTable("ProjectOverviews");
                 });
 
-            modelBuilder.Entity("Tessera.Domain.Entities.PullRequestReview", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("BaseSha")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("CommentBody")
-                        .HasColumnType("text");
-
-                    b.Property<long?>("CommentId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ErrorMessage")
-                        .HasColumnType("text");
-
-                    b.Property<string>("HeadSha")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("PrNumber")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("RepositoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RepositoryId", "Status");
-
-                    b.HasIndex("RepositoryId", "PrNumber", "HeadSha")
-                        .IsUnique();
-
-                    b.ToTable("PullRequestReviews");
-                });
-
             modelBuilder.Entity("Tessera.Domain.Entities.Repository", b =>
                 {
                     b.Property<Guid>("Id")
@@ -598,9 +509,6 @@ namespace Tessera.Infrastructure.Migrations
 
                     b.Property<int>("EdgeCount")
                         .HasColumnType("integer");
-
-                    b.Property<bool>("EnablePrComments")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
@@ -646,9 +554,6 @@ namespace Tessera.Infrastructure.Migrations
 
                     b.Property<int>("ReprocessMode")
                         .HasColumnType("integer");
-
-                    b.Property<string>("RulesYaml")
-                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("StageStartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -736,15 +641,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.Navigation("Repository");
                 });
 
-            modelBuilder.Entity("Tessera.Domain.Entities.EdgeHistory", b =>
-                {
-                    b.HasOne("Tessera.Domain.Entities.Repository", null)
-                        .WithMany()
-                        .HasForeignKey("RepositoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Tessera.Domain.Entities.KnowledgeNode", b =>
                 {
                     b.HasOne("Tessera.Domain.Entities.Repository", "Repository")
@@ -800,15 +696,6 @@ namespace Tessera.Infrastructure.Migrations
                     b.Navigation("Repository");
 
                     b.Navigation("Snapshot");
-                });
-
-            modelBuilder.Entity("Tessera.Domain.Entities.PullRequestReview", b =>
-                {
-                    b.HasOne("Tessera.Domain.Entities.Repository", null)
-                        .WithMany()
-                        .HasForeignKey("RepositoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Tessera.Domain.Entities.Snapshot", b =>

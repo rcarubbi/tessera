@@ -55,14 +55,15 @@ public sealed class RetrievalService(
             return Array.Empty<RetrievedNode>();
         }
 
-        var nodes = await db.KnowledgeNodes.AsNoTracking()
-            .Where(n => n.SnapshotId == snapshot.Id)
-            .ToListAsync(ct);
-
-        if (nodes.Count == 0)
+        var tokens = Tokenize(question);
+        if (tokens.Count == 0)
         {
             return Array.Empty<RetrievedNode>();
         }
+
+        var nodes = await db.KnowledgeNodes.AsNoTracking()
+            .Where(n => n.SnapshotId == snapshot.Id)
+            .ToListAsync(ct);
 
         var embedding = providers.Embedding;
         var scored = embedding is not null
@@ -106,28 +107,12 @@ public sealed class RetrievalService(
             .Where(e => e.SnapshotId == snapshot.Id && e.Model == model)
             .ToDictionaryAsync(e => e.NodeId, ct);
 
-        foreach (var node in nodes)
+        // Embeddings are generated in the analysis pipeline. If any node is missing one,
+        // fall back to lexical scoring rather than blocking the request on on-the-fly generation.
+        if (nodes.Any(n => !cached.ContainsKey(n.Id)))
         {
-            if (cached.ContainsKey(node.Id))
-            {
-                continue;
-            }
-            var vector = await embedding.EmbedAsync(EmbeddableText(node), ct);
-            var entity = new NodeEmbedding
-            {
-                Id = Guid.NewGuid(),
-                NodeId = node.Id,
-                SnapshotId = node.SnapshotId,
-                RepositoryId = node.RepositoryId,
-                Model = model,
-                Dimensions = vector.Length,
-                Vector = Pack(vector),
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            db.NodeEmbeddings.Add(entity);
-            cached[node.Id] = entity;
+            return LexicalScore(nodes, question);
         }
-        await db.SaveChangesAsync(ct);
 
         var questionVector = await embedding.EmbedAsync(question, ct);
         var results = new List<RetrievedNode>(nodes.Count);
@@ -170,9 +155,6 @@ public sealed class RetrievalService(
         return results;
     }
 
-    private static string EmbeddableText(KnowledgeNode node) =>
-        $"{node.Symbol}\n{node.Path} lines {node.StartLine}-{node.EndLine}\n{node.Content}";
-
     private static List<string> Tokenize(string text)
     {
         var tokens = TokenPattern.Matches(text.ToLowerInvariant())
@@ -207,13 +189,6 @@ public sealed class RetrievalService(
             return 0;
         }
         return dot / (Math.Sqrt(normA) * Math.Sqrt(normB));
-    }
-
-    private static byte[] Pack(float[] values)
-    {
-        var bytes = new byte[values.Length * sizeof(float)];
-        Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
-        return bytes;
     }
 
     private static float[] Unpack(NodeEmbedding entry)
