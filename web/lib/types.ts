@@ -59,6 +59,7 @@ export type GraphNode = {
   model?: string | null;
   promptVersion?: string | null;
   analyzedAt?: string;
+  isTest?: boolean;
 };
 
 export type GraphEdge = {

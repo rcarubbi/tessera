@@ -47,7 +47,8 @@ public sealed record GraphNodeItem(
     string CommitSha,
     string? Model,
     string? PromptVersion,
-    DateTimeOffset AnalyzedAt);
+    DateTimeOffset AnalyzedAt,
+    bool IsTest);
 public sealed record GraphEdgeItem(
     string From,
     string To,
@@ -253,7 +254,8 @@ public sealed class GraphQueryService(TesseraDbContext db)
                     n.StartLine, n.EndLine, n.Confidence, ReviewStatusLabel.Get(n.ReviewStatus),
                     n.SemanticHash, n.Content, n.ClassDiagram, n.SequenceDiagram,
                     evidence.Classification, evidence.FactSource, evidence.Tier,
-                    n.CommitSha, n.Model, n.PromptVersion, n.AnalyzedAt);
+                    n.CommitSha, n.Model, n.PromptVersion, n.AnalyzedAt,
+                    TestPathDetector.IsTestPath(n.Path));
             })
             .ToList();
 

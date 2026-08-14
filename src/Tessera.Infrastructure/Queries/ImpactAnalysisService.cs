@@ -145,7 +145,7 @@ public sealed class ImpactAnalysisService(TesseraDbContext db, GraphQueryService
     {
         var path = string.IsNullOrWhiteSpace(item.Path) ? node?.Path ?? "" : item.Path;
 
-        if (IsTestPath(path))
+        if (TestPathDetector.IsTestPath(path))
         {
             return (ImpactClassification.Test, "matched test path convention");
         }
@@ -166,25 +166,6 @@ public sealed class ImpactAnalysisService(TesseraDbContext db, GraphQueryService
         }
 
         return (ImpactClassification.Other, "no convention matched");
-    }
-
-    private static bool IsTestPath(string path)
-    {
-        var lower = path.ToLowerInvariant();
-        var segments = lower.Split('/');
-        if (segments.Any(s => s is "test" or "tests"))
-        {
-            return true;
-        }
-
-        var fileName = Path.GetFileNameWithoutExtension(segments[^1]);
-        return fileName.StartsWith("test", StringComparison.Ordinal)
-            || fileName.EndsWith("test", StringComparison.Ordinal)
-            || fileName.EndsWith("tests", StringComparison.Ordinal)
-            || fileName.StartsWith("spec", StringComparison.Ordinal)
-            || fileName.EndsWith("spec", StringComparison.Ordinal)
-            || fileName.Contains(".test", StringComparison.Ordinal)
-            || fileName.Contains(".spec", StringComparison.Ordinal);
     }
 
     private static bool IsStorageConvention(string path)

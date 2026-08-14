@@ -80,6 +80,7 @@ export default function GraphView({
   const [edgeTypes, setEdgeTypes] = useState<Set<string>>(new Set());
   const [expandDepth, setExpandDepth] = useState(1);
   const [showMethods, setShowMethods] = useState(true);
+  const [hideTests, setHideTests] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [tierFilter, setTierFilter] = useState<string>("");
   const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
@@ -166,10 +167,10 @@ export default function GraphView({
       (n) =>
         (!module || n.path.startsWith(module)) &&
         (showMethods || (n.kind !== "Method" && n.kind !== "Function")) &&
-        (!sourceFilter || n.classification === sourceFilter) &&
+        (!hideTests || !n.isTest) &&
         (!tierFilter || n.tier === tierFilter),
     );
-  }, [graph, module, showMethods, sourceFilter, tierFilter]);
+  }, [graph, module, showMethods, hideTests, sourceFilter, tierFilter]);
 
   const visibleKeys = useMemo(() => new Set(visibleNodes.map((n) => n.key)), [visibleNodes]);
 
@@ -335,7 +336,7 @@ export default function GraphView({
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Source</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Edge source</span>
               <select className={select} value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
                 <option value="">All</option>
                 <option value="fact">Facts only</option>
@@ -363,6 +364,19 @@ export default function GraphView({
                 <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
               </span>
               <span className="text-dim">Show method nodes</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 pb-1 text-[13px] select-none">
+              <span className="relative inline-flex">
+                <input
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={hideTests}
+                  onChange={(e) => setHideTests(e.target.checked)}
+                />
+                <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
+                <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
+              </span>
+              <span className="text-dim">Hide Test nodes</span>
             </label>
           </div>
           <div>
