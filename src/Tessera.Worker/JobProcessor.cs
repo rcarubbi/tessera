@@ -38,13 +38,18 @@ public sealed class JobProcessor(
     private async Task ProcessPendingAsync(CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
+
+        // Handle queued/failed PR reviews before claiming a repository. A single
+        // long-running pipeline blocks this loop for the duration, so reviews must
+        // not wait for the current cycle's pipeline to finish.
+        await ProcessIdlePrReviewsAsync(scope, ct);
+
         var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
         var leaseDuration = scope.ServiceProvider.GetRequiredService<IOptions<AnalysisPipelineOptions>>().Value.LeaseDuration;
 
         var repo = await ClaimNextRepositoryAsync(db, leaseDuration, ct);
         if (repo is null)
         {
-            await ProcessIdlePrReviewsAsync(scope, ct);
             return;
         }
 
@@ -156,7 +161,8 @@ public sealed class JobProcessor(
 
     // Processes queued/failed PR reviews for idle repositories (no pending analysis). Reviews now run
     // against the latest analyzed snapshot, so they no longer depend on a freshly completed pipeline.
-    private async Task ProcessIdlePrReviewsAsync(IServiceScope scope, CancellationToken ct)
+    // Public so integration tests can exercise this scheduling path directly.
+    public async Task ProcessIdlePrReviewsAsync(IServiceScope scope, CancellationToken ct)
     {
         var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
         var repoId = await db.PullRequestReviews.AsNoTracking()

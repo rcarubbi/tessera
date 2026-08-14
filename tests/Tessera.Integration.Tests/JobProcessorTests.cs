@@ -1,10 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Tessera.Domain.Entities;
 using Tessera.Domain.Enums;
+using Tessera.Domain.Ports;
+using Tessera.Infrastructure.Ai;
+using Tessera.Infrastructure.Analysis;
 using Tessera.Infrastructure.Data;
+using Tessera.Infrastructure.GitHub;
+using Tessera.Infrastructure.Queries;
+using Tessera.Infrastructure.Reviews;
 using Tessera.Worker;
+using Tessera.Worker.Pipeline;
 using Testcontainers.PostgreSql;
 
 namespace Tessera.Integration.Tests;
@@ -35,6 +43,14 @@ public sealed class JobProcessorTests : IClassFixture<PostgresContainerFixture>,
     {
         var services = new ServiceCollection();
         services.AddDbContext<TesseraDbContext>(o => o.UseNpgsql(fixture.ConnectionString));
+        services.AddLogging();
+        services.AddScoped<GraphQueryService>();
+        services.AddScoped<ArchitectureRuleService>();
+        services.AddScoped<PrReviewService>();
+        services.AddSingleton<IGitHubAppClient>(new RecordingGitHubClient());
+        services.AddSingleton<IProviderRegistry>(new FakeProviderRegistry(null));
+        services.AddSingleton<IGitClient>(new FakeGitClient([]));
+        services.AddSingleton(Options.Create(new AnalysisPipelineOptions { WorkRoot = "work", LeaseDuration = LeaseDuration }));
         _provider = services.BuildServiceProvider();
         _scope = _provider.CreateScope();
         _db = _scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
@@ -139,6 +155,79 @@ public sealed class JobProcessorTests : IClassFixture<PostgresContainerFixture>,
         Assert.True(claimed.LeaseExpiresAt > DateTimeOffset.UtcNow);
         Assert.Equal(0, claimed.ProcessedCount);
         Assert.Equal(0, claimed.TotalCount);
+    }
+
+    [Fact]
+    public async Task Queued_review_for_idle_repository_is_processed_before_claim()
+    {
+        var repo = NewRepo(ProcessingStatus.Completed, DateTimeOffset.UtcNow);
+        repo.EnablePrComments = false;
+        _db.Repositories.Add(repo);
+        await _db.SaveChangesAsync();
+
+        SeedSnapshot(_db, repo.Id, "base1", Node(repo.Id, "Impl", "src/app/Impl.cs", NodeKind.Class, 10));
+        SeedSnapshot(_db, repo.Id, "head1", Node(repo.Id, "Impl", "src/app/Impl.cs", NodeKind.Class, 10));
+        var review = SeedReview(_db, repo.Id, 12, "head1", "base1");
+
+        await CreateProcessor().ProcessIdlePrReviewsAsync(_scope, CancellationToken.None);
+
+        var result = await _db.PullRequestReviews.AsNoTracking().SingleAsync(r => r.Id == review.Id);
+        Assert.Equal(PrReviewStatus.Reviewed, result.Status);
+        Assert.NotNull(result.CommentBody);
+        Assert.Null(result.ErrorMessage);
+    }
+
+    private static KnowledgeNode Node(Guid repoId, string key, string path, NodeKind kind, int line) => new()
+    {
+        Id = Guid.NewGuid(),
+        RepositoryId = repoId,
+        Key = key,
+        Path = path,
+        Symbol = key,
+        Kind = kind,
+        StartLine = line,
+        EndLine = line,
+        Content = "",
+        Confidence = 1.0,
+        CommitSha = ""
+    };
+
+    private static Snapshot SeedSnapshot(TesseraDbContext db, Guid repoId, string sha, params KnowledgeNode[] nodes)
+    {
+        var snapshot = new Snapshot
+        {
+            Id = Guid.NewGuid(),
+            RepositoryId = repoId,
+            CommitSha = sha,
+            RootHash = $"root-{sha}",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Snapshots.Add(snapshot);
+        foreach (var node in nodes)
+        {
+            node.SnapshotId = snapshot.Id;
+            db.KnowledgeNodes.Add(node);
+        }
+        db.SaveChanges();
+        return snapshot;
+    }
+
+    private static PullRequestReview SeedReview(TesseraDbContext db, Guid repoId, int prNumber, string headSha, string baseSha)
+    {
+        var review = new PullRequestReview
+        {
+            Id = Guid.NewGuid(),
+            RepositoryId = repoId,
+            PrNumber = prNumber,
+            HeadSha = headSha,
+            BaseSha = baseSha,
+            Status = PrReviewStatus.Queued,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.PullRequestReviews.Add(review);
+        db.SaveChanges();
+        return review;
     }
 
     public void Dispose()
