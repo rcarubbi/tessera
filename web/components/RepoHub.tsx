@@ -8,8 +8,7 @@ import DiffView from "@/components/DiffView";
 import ReviewPanel from "@/components/ReviewPanel";
 import ChatPanel from "@/components/ChatPanel";
 import EntityPanel from "@/components/EntityPanel";
-import FilesPanel from "@/components/FilesPanel";
-import OverviewPanel from "@/components/OverviewPanel";
+import ExplainerView from "@/components/ExplainerView";
 import RulesPanel from "@/components/RulesPanel";
 import PrPanel from "@/components/PrPanel";
 import StatusBadge from "@/components/StatusBadge";
@@ -18,7 +17,7 @@ import { apiGet } from "@/lib/api";
 import { card, cardError } from "@/lib/ui";
 import type { Repository, Snapshot } from "@/lib/types";
 
-type Tab = "overview" | "files" | "graph" | "diff" | "review" | "chat" | "rules" | "pr";
+type Tab = "explain" | "graph" | "diff" | "review" | "chat" | "rules" | "pr";
 
 export default function RepoHub({ repoId }: { repoId: string }) {
   const [repo, setRepo] = useState<Repository | null>(null);
@@ -66,8 +65,7 @@ export default function RepoHub({ repoId }: { repoId: string }) {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    { id: "files", label: "Files" },
+    { id: "explain", label: "Explain" },
     { id: "graph", label: "Graph" },
     { id: "diff", label: "Diff" },
     { id: "review", label: "Review" },
@@ -130,17 +128,7 @@ export default function RepoHub({ repoId }: { repoId: string }) {
 
           <div className="flex items-stretch gap-4">
             <div className="min-w-0 flex-1">
-              {tab === "overview" && <OverviewPanel repoId={repoId} />}
-              {tab === "files" && (
-                <FilesPanel
-                  repoId={repoId}
-                  commit={commit}
-                  onSelect={(key) => {
-                    openEntity(key);
-                    setTab("graph");
-                  }}
-                />
-              )}
+              {tab === "explain" && <ExplainerView repoId={repoId} commit={commit} onSelect={openEntity} />}
               {tab === "graph" && (
                 <GraphView repoId={repoId} commit={commit} onSelect={openEntity} selectedKey={selectedKey} />
               )}

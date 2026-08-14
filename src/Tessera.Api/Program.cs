@@ -30,6 +30,8 @@ builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IProviderRegistry>(sp => sp.GetRequiredService<ProviderRegistry>());
 builder.Services.AddScoped<AiSettingsService>();
 builder.Services.AddScoped<GraphQueryService>();
+builder.Services.AddScoped<IOverviewService, OverviewService>();
+builder.Services.AddScoped<ExplainerService>();
 builder.Services.AddScoped<ImpactAnalysisService>();
 builder.Services.AddScoped<ArchitectureRuleService>();
 builder.Services.AddScoped<AccessControlService>();

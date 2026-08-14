@@ -17,6 +17,14 @@ jobs:
         run: dotnet restore Tessera.slnx
       - name: Build
         run: dotnet build Tessera.slnx -c Release --no-restore -warnaserror
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: analyzers/package-lock.json
+      - name: Install analyzer sidecar dependencies
+        working-directory: analyzers
+        run: npm ci
       - name: Test
         run: dotnet test Tessera.slnx -c Release --no-build
 

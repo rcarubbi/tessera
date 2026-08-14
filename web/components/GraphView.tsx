@@ -5,11 +5,23 @@ import dynamic from "next/dynamic";
 import { apiGet } from "@/lib/api";
 import type { Graph, GraphEdge, GraphNode } from "@/lib/types";
 import type { GraphCanvasRef, InternalGraphNode } from "reagraph";
-import { card, cardError, select } from "@/lib/ui";
+import { badge, card, cardError, select, spinner } from "@/lib/ui";
 
 const GraphCanvas = dynamic(() => import("reagraph").then((m) => m.GraphCanvas), {
   ssr: false,
 });
+
+type NodeHit = {
+  key: string;
+  symbol: string;
+  kind: string;
+  language: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  confidence: number;
+  reviewStatus: string;
+};
 
 const KIND_COLORS: Record<string, string> = {
   Class: "#58a6ff",
@@ -71,8 +83,42 @@ export default function GraphView({
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [tierFilter, setTierFilter] = useState<string>("");
   const [hover, setHover] = useState<{ node: GraphNode; x: number; y: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<NodeHit[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const commitParam = commit ? `&commit=${encodeURIComponent(commit)}` : "";
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearchOpen(false);
+      return;
+    }
+    setSearchLoading(true);
+    let cancelled = false;
+    const controller = new AbortController();
+    apiGet<NodeHit[]>(
+      `/api/repositories/${repoId}/nodes?q=${encodeURIComponent(q)}&limit=20${commitParam}`,
+      controller.signal,
+    )
+      .then((items) => {
+        if (!cancelled) {
+          setSearchResults(items);
+          setSearchOpen(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSearchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [repoId, commit, commitParam, searchQuery]);
 
   useEffect(() => {
     setLoading(true);
@@ -337,6 +383,47 @@ export default function GraphView({
         </div>
       </div>
 
+      <div className="relative mb-3">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-panel px-3 py-2">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => searchResults && setSearchOpen(true)}
+            placeholder="Search files, symbols, paths…"
+            className="w-full bg-transparent text-sm outline-none placeholder:text-dim"
+          />
+          {searchLoading && <span className={spinner} />}
+        </div>
+        {searchOpen && searchResults && (
+          <div className="absolute z-30 mt-1 max-h-[360px] w-full overflow-y-auto rounded-lg border border-border bg-panel shadow-xl">
+            {searchResults.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-dim">No matches for &quot;{searchQuery.trim()}&quot;.</div>
+            ) : (
+              Object.entries(useGroups(searchResults)).map(([p, items]) => (
+                <div key={p} className="border-b border-border px-2 py-1.5 last:border-b-0">
+                  <div className="truncate px-1 font-mono text-xs text-dim">{p}</div>
+                  {items.map((n) => (
+                    <button
+                      key={n.key}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-sm hover:bg-inset"
+                      onClick={() => {
+                        onSelect(n.key);
+                        setSearchOpen(false);
+                      }}
+                    >
+                      <span className={badge}>{n.kind}</span>
+                      <span className="truncate text-fg">{n.symbol}</span>
+                      <span className="ml-auto shrink-0 text-xs text-dim">line {n.startLine}</span>
+                    </button>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="relative overflow-hidden rounded-lg border border-border bg-bg">
         <div
           ref={wrapRef}
@@ -426,4 +513,12 @@ export default function GraphView({
       </div>
     </div>
   );
+}
+
+function useGroups(items: NodeHit[]): Record<string, NodeHit[]> {
+  const groups: Record<string, NodeHit[]> = {};
+  for (const n of items) {
+    (groups[n.path] ??= []).push(n);
+  }
+  return groups;
 }

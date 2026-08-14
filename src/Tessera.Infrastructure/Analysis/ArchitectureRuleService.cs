@@ -64,7 +64,7 @@ public sealed class ArchitectureRuleService(TesseraDbContext db)
         var snapshot = await ResolveSnapshotAsync(repositoryId, commitSha, ct);
         var nodes = await NodesByKeyAsync(snapshot.Id, ct);
         var edges = await EdgesAsync(snapshot.Id, ct);
-        return new RuleEvaluationResult(snapshot.CommitSha, EvaluateSnapshot(ruleSet, nodes, edges));
+        return new RuleEvaluationResult(snapshot.CommitSha, Evaluate(ruleSet, nodes, edges));
     }
 
     public async Task<RuleDriftResult> DriftAsync(
@@ -90,7 +90,7 @@ public sealed class ArchitectureRuleService(TesseraDbContext db)
             var snapshot = snapshots[i];
             var nodes = await NodesByKeyAsync(snapshot.Id, ct);
             var edges = await EdgesAsync(snapshot.Id, ct);
-            var violations = EvaluateSnapshot(ruleSet, nodes, edges);
+            var violations = Evaluate(ruleSet, nodes, edges);
             foreach (var violation in violations)
             {
                 var key = ViolationKey(violation);
@@ -194,7 +194,7 @@ public sealed class ArchitectureRuleService(TesseraDbContext db)
         return new NodeSelector(string.IsNullOrWhiteSpace(selector.Path) ? null : selector.Path.Trim(), kind);
     }
 
-    private static IReadOnlyList<RuleViolation> EvaluateSnapshot(
+    public static IReadOnlyList<RuleViolation> Evaluate(
         ArchitectureRuleSet ruleSet,
         Dictionary<string, KnowledgeNode> nodes,
         List<GraphEdge> edges)

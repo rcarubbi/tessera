@@ -232,13 +232,13 @@ public sealed class AnalysisPipeline(
         var files = await git.ListFilesAtCommitAsync(workDir, head, ct);
         var sourceFiles = new List<ParsedSourceFile>();
 
-        repo.TotalCount = files.Take(options.Value.MaxFilesPerBatch).Count(HasSupportedExtension);
+        repo.TotalCount = files.Take(options.Value.MaxFilesPerBatch).Count(SourceFileExtensions.HasSupportedExtension);
         await db.SaveChangesAsync(ct);
 
         foreach (var file in files.Take(options.Value.MaxFilesPerBatch))
         {
             ct.ThrowIfCancellationRequested();
-            if (!HasSupportedExtension(file))
+            if (!SourceFileExtensions.HasSupportedExtension(file))
             {
                 continue;
             }
@@ -568,11 +568,6 @@ public sealed class AnalysisPipeline(
         }
     }
 
-    private static bool HasSupportedExtension(string path)
-    {
-        var ext = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
-        return ext is "cs" or "java" or "js" or "jsx" or "mjs" or "cjs" or "ts" or "tsx" or "py" or "go" or "php" or "rb";
-    }
 }
 
 public sealed class StoredSnapshot

@@ -166,8 +166,7 @@ export type ChainItem = {
 };
 export type Chain = { entity: string; commitSha: string; items: ChainItem[] };
 
-export type EdgeHistoryEntry = {
-  type: string;
+export type EdgeHistoryEntry = {  type: string;
   introducedCommit: string;
   introducedAt: string;
   ageInDays: number;
@@ -178,6 +177,39 @@ export type EdgeHistory = {
   exists: boolean;
   commitSha: string;
   entries: EdgeHistoryEntry[];
+};
+
+export type ExplainedComponent = {
+  key: string;
+  symbol: string;
+  path: string;
+  line: number;
+  kind: string;
+  role: string;
+};
+
+export type CriticalComponent = {
+  key: string;
+  symbol: string;
+  path: string;
+  line: number;
+  centrality: number;
+};
+
+export type ExplainResult = {
+  hasSnapshot: boolean;
+  emptyReason?: string | null;
+  commitSha?: string | null;
+  summary?: string | null;
+  diagrams?: string[];
+  rawOverview?: string | null;
+  model: string;
+  nodeCount: number;
+  generatedAt: string;
+  mainComponents: ExplainedComponent[];
+  architecturalNotes: string[];
+  externalSystems: string[];
+  criticalComponents: CriticalComponent[];
 };
 
 export type RuleSeverity = "info" | "warning" | "error";

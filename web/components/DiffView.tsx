@@ -110,24 +110,24 @@ export default function DiffView({
           )}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className={card}>
+            <div className={`${card} min-w-0`}>
               <div className="mb-2 font-semibold text-good">Added ({added.length})</div>
               <ChangeList items={added} onSelect={onSelect} tone="added" />
             </div>
-            <div className={card}>
+            <div className={`${card} min-w-0`}>
               <div className="mb-2 font-semibold text-danger">Removed ({removed.length})</div>
               <ChangeList items={removed} onSelect={onSelect} tone="removed" />
             </div>
-            <div className={card}>
+            <div className={`${card} min-w-0`}>
               <div className="mb-2 font-semibold text-warn">Changed ({changed.length})</div>
               <ChangeList items={changed} onSelect={onSelect} tone="changed" />
             </div>
-            <div className={card}>
+            <div className={`${card} min-w-0`}>
               <div className="mb-2 font-semibold text-dim">Edges ({diff.edges.length})</div>
-              <ul className="space-y-0.5">
+              <ul className="max-h-[320px] space-y-0.5 overflow-y-auto pr-1">
                 {diff.edges.map((e, i) => (
                   <li key={i} className="text-sm">
-                    <span className={e.change === "added" ? "text-good" : "text-danger"}>
+                    <span className={`break-all ${e.change === "added" ? "text-good" : "text-danger"}`}>
                       {e.change === "added" ? "+" : "−"} {e.from} → {e.to}
                     </span>{" "}
                     <span className="text-dim">({e.type})</span>                  </li>
@@ -144,9 +144,9 @@ export default function DiffView({
 function ChangeList({ items, onSelect, tone }: { items: { key: string; symbol: string }[]; onSelect: (k: string) => void; tone: string }) {
   if (items.length === 0) return <div className="text-dim">none</div>;
   return (
-    <ul className="space-y-0.5">
+    <ul className="max-h-[320px] space-y-0.5 overflow-y-auto pr-1">
       {items.map((n) => (
-        <li key={`${tone}-${n.key}`} className="text-sm">
+        <li key={`${tone}-${n.key}`} className="min-w-0 text-sm">
           <button
             type="button"
             className={`cursor-pointer hover:underline ${tone === "added" ? "text-good" : tone === "removed" ? "text-danger" : "text-warn"}`}
@@ -154,7 +154,7 @@ function ChangeList({ items, onSelect, tone }: { items: { key: string; symbol: s
           >
             {n.symbol}
           </button>{" "}
-          <span className={path}>{n.key}</span>
+          <span className={`${path} break-all`}>{n.key}</span>
         </li>
       ))}
     </ul>

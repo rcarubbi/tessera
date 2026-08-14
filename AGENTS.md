@@ -12,6 +12,7 @@ Tessera ingests Git repositories and builds a knowledge graph: nodes (classes, i
 - `src/Tessera.Infrastructure` — adapters: EF Core (`Data/`, `Migrations/`), AI providers (`Ai/`, `Chat/`), analysis (`Analysis/`), queries (`Queries/`), GitHub, Auth, Reviews, Storage.
 - `src/Tessera.Api` — minimal API. Endpoint groups in static classes: `AuthEndpoints`, `ChatEndpoints`, `GitHubEndpoints`, `QueryEndpoints`, `ReviewEndpoints`, `SettingsEndpoints`; DI + route mapping in `Program.cs`.
 - `src/Tessera.Worker` — background processing: `JobProcessor` (poll loop) and `Pipeline/AnalysisPipeline` (staged pipeline with progress + cancellation).
+- `src/Tessera.Cli` — offline console binary (`tessera analyze/report/rules`): DI via Microsoft.Extensions.DependencyInjection over Domain + Infrastructure, argument parsing + terminal GUI via Spectre.Console.Cli, no DB/AI/upload. Shared pure graph helpers live in `Tessera.Infrastructure/Queries/GraphAlgorithms.cs` and are called by both the API (`GraphQueryService`) and the CLI.
 - `tests/Tessera.Domain.Tests`, `tests/Tessera.Integration.Tests` — xUnit; integration tests use in-memory DB and fake provider registries.
 - `analyzers/` — Node.js parse sidecar (`src/analyzer.js`, `src/index.js`); tests with `node:test` in `test/batch.test.js`.
 - `web/` — Next.js 15 App Router client app (React 19, TypeScript strict, Tailwind v4, Preline UI).
@@ -69,6 +70,12 @@ Tessera ingests Git repositories and builds a knowledge graph: nodes (classes, i
 dotnet build Tessera.slnx
 dotnet test tests/Tessera.Integration.Tests --no-restore
 dotnet test tests/Tessera.Domain.Tests --no-restore
+dotnet test tests/Tessera.Cli.Tests --no-restore
+
+# Offline CLI (requires analyzer sidecar at http://localhost:4350 for analyze)
+dotnet run --project src/Tessera.Cli -- analyze <repo-path>
+dotnet run --project src/Tessera.Cli -- report
+dotnet run --project src/Tessera.Cli -- rules validate <rules.yaml>
 
 # EF migration
 dotnet ef migrations add <Name> --project src/Tessera.Infrastructure --startup-project src/Tessera.Api

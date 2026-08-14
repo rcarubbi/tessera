@@ -268,12 +268,12 @@ public sealed class ArchitectureChatService(
         }
 
         var built = BuildRagResult(answer, retrieved);
+        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: built.Citations);
         foreach (var chunk in Chunk(answer))
         {
             ct.ThrowIfCancellationRequested();
             yield return new ChatStreamItem(ChatStreamKind.Delta, Text: chunk);
         }
-        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: built.Citations);
     }
 
     private async Task<(bool Produced, string Answer)> CollectProviderAnswerAsync(
@@ -334,12 +334,12 @@ public sealed class ArchitectureChatService(
         [EnumeratorCancellation] CancellationToken ct)
     {
         yield return new ChatStreamItem(ChatStreamKind.Mode, Mode: result.Mode);
+        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: result.Citations);
         foreach (var chunk in Chunk(result.Answer))
         {
             ct.ThrowIfCancellationRequested();
             yield return new ChatStreamItem(ChatStreamKind.Delta, Text: chunk);
         }
-        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: result.Citations);
     }
 
     private async IAsyncEnumerable<ChatStreamItem> StreamResultBodyAsync(
@@ -348,12 +348,12 @@ public sealed class ArchitectureChatService(
         [EnumeratorCancellation] CancellationToken ct)
     {
         var built = BuildRagResult(answer, retrieved);
+        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: built.Citations);
         foreach (var chunk in Chunk(answer))
         {
             ct.ThrowIfCancellationRequested();
             yield return new ChatStreamItem(ChatStreamKind.Delta, Text: chunk);
         }
-        yield return new ChatStreamItem(ChatStreamKind.Citations, Citations: built.Citations);
     }
 
     private ChatResult NoContextResult() => new(

@@ -262,42 +262,63 @@ public sealed class OverviewService(
         return text + "\n\n" + BuildComponentDiagram(nodes, edges);
     }
 
-    private static readonly Regex DiagramNodeKeyRegex = new(
-        @"\[\s*([^\]]+?)\s*\]",
-        RegexOptions.Compiled);
+    private const int MaxDiagramNodes = 60;
+    private const int MaxDiagramEdges = 40;
 
     private static string BuildComponentDiagram(IReadOnlyList<KnowledgeNode> nodes, IReadOnlyList<GraphEdge>? edges)
     {
         var sb = new StringBuilder();
         sb.AppendLine("## Component diagram");
         sb.AppendLine();
+
+        var groups = nodes
+            .GroupBy(n => ModuleOf(n))
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            var chunks = Chunk(group.ToList(), MaxDiagramNodes);
+            for (var i = 0; i < chunks.Count; i++)
+            {
+                var title = chunks.Count > 1
+                    ? $"{ModuleLabel(group.Key)} ({i + 1}/{chunks.Count})"
+                    : ModuleLabel(group.Key);
+                AppendMermaidDiagram(sb, title, chunks[i], edges);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static void AppendMermaidDiagram(
+        StringBuilder sb,
+        string title,
+        IReadOnlyList<KnowledgeNode> chunk,
+        IReadOnlyList<GraphEdge>? edges)
+    {
+        sb.AppendLine($"### {title}");
+        sb.AppendLine();
         sb.AppendLine("```mermaid");
         sb.AppendLine("flowchart LR");
 
         var idByKey = new Dictionary<string, string>(StringComparer.Ordinal);
         var index = 0;
-        foreach (var group in nodes.GroupBy(n => n.Language).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var node in chunk)
         {
-            sb.AppendLine($"  subgraph {GroupId(group.Key)}[\"{LanguageLabel(group.Key)}\"]");
-            foreach (var node in group)
-            {
-                var id = $"n{index++}";
-                idByKey[node.Key] = id;
-                sb.AppendLine($"    {id}[\"{MermaidLabel(node.Symbol)}\"]");
-            }
-            sb.AppendLine("  end");
+            idByKey[node.Key] = $"n{index++}";
+            sb.AppendLine($"  n{index - 1}[\"{MermaidLabel(node.Symbol)}\"]");
         }
 
         if (edges is { Count: > 0 })
         {
-            var languageByKey = nodes.ToDictionary(n => n.Key, n => n.Language, StringComparer.Ordinal);
+            var languageByKey = chunk.ToDictionary(n => n.Key, n => n.Language, StringComparer.Ordinal);
             var drawn = 0;
             foreach (var edge in edges
                 .Where(e => idByKey.ContainsKey(e.FromKey) && idByKey.ContainsKey(e.ToKey))
                 .OrderByDescending(e => CrossTech(e, languageByKey) ? 1 : 0)
                 .ThenByDescending(e => e.Confidence))
             {
-                if (drawn >= 60) break;
+                if (drawn >= MaxDiagramEdges) break;
                 var from = idByKey[edge.FromKey];
                 var to = idByKey[edge.ToKey];
                 if (from == to) continue;
@@ -307,29 +328,31 @@ public sealed class OverviewService(
         }
 
         sb.AppendLine("```");
-        return sb.ToString();
+        sb.AppendLine();
     }
 
-    private static string GroupId(string language)
+    private static string ModuleOf(KnowledgeNode node)
     {
-        var hash = string.Join("", language.Select(c => ((int)c).ToString("x")).Take(6));
-        return $"g{hash}";
+        var trimmed = (node.Path ?? "").TrimStart('/');
+        var idx = trimmed.IndexOf('/');
+        if (idx <= 0)
+        {
+            return ".";
+        }
+        return trimmed[..idx];
     }
 
-    private static string LanguageLabel(string language) => language switch
+    private static string ModuleLabel(string module) => module == "." ? "root" : module;
+
+    private static List<List<T>> Chunk<T>(IReadOnlyList<T> items, int size)
     {
-        "c_sharp" => ".NET / C#",
-        "javascript" => "JavaScript",
-        "typescript" => "TypeScript",
-        "tsx" => "TypeScript / React",
-        "python" => "Python",
-        "go" => "Go",
-        "java" => "Java",
-        "php" => "PHP",
-        "ruby" => "Ruby",
-        "" => "Other",
-        _ => language
-    };
+        var chunks = new List<List<T>>();
+        for (var i = 0; i < items.Count; i += size)
+        {
+            chunks.Add(items.Skip(i).Take(size).ToList());
+        }
+        return chunks;
+    }
 
     private static string MermaidLabel(string text)
     {
