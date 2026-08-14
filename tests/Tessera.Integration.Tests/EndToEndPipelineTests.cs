@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -28,6 +29,7 @@ public sealed class EndToEndPipelineTests : IDisposable
     private readonly string _sidecarRoot;
     private readonly int _sidecarPort;
     private Process? _sidecarProcess;
+    private readonly StringBuilder _sidecarLog = new();
 
     public EndToEndPipelineTests()
     {
@@ -40,6 +42,10 @@ public sealed class EndToEndPipelineTests : IDisposable
         InitGitRepo(_gitRepoRoot);
 
         _sidecarProcess = StartSidecar(_sidecarPort, _sidecarRoot);
+        _sidecarProcess.OutputDataReceived += (_, e) => { if (e.Data is not null) _sidecarLog.AppendLine(e.Data); };
+        _sidecarProcess.ErrorDataReceived += (_, e) => { if (e.Data is not null) _sidecarLog.AppendLine(e.Data); };
+        _sidecarProcess.BeginOutputReadLine();
+        _sidecarProcess.BeginErrorReadLine();
         WaitForSidecar(_sidecarPort);
     }
 
@@ -408,7 +414,7 @@ public sealed class EndToEndPipelineTests : IDisposable
         return Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start sidecar.");
     }
 
-    private static void WaitForSidecar(int port)
+    private void WaitForSidecar(int port)
     {
         using var client = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}/") };
         var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -428,7 +434,9 @@ public sealed class EndToEndPipelineTests : IDisposable
             }
             Thread.Sleep(250);
         }
-        throw new TimeoutException("Sidecar did not become healthy in time.");
+        var log = _sidecarLog.Length > 0 ? _sidecarLog.ToString().Trim() : "(no output captured)";
+        throw new TimeoutException(
+            $"Sidecar did not become healthy in time. Port {port}. Process output:{Environment.NewLine}{log}");
     }
 
     private static void InitGitRepo(string repoRoot)
