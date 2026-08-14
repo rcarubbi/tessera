@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Tessera.Api/Tessera.Api.csproj" />
+    <Project Path="src/Tessera.Cli/Tessera.Cli.csproj" />
     <Project Path="src/Tessera.Domain/Tessera.Domain.csproj" />
     <Project Path="src/Tessera.Infrastructure/Tessera.Infrastructure.csproj" />
     <Project Path="src/Tessera.Worker/Tessera.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Tessera.Cli.Tests/Tessera.Cli.Tests.csproj" />
     <Project Path="tests/Tessera.Domain.Tests/Tessera.Domain.Tests.csproj" />
     <Project Path="tests/Tessera.Integration.Tests/Tessera.Integration.Tests.csproj" />
   </Folder>

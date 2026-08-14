@@ -215,6 +215,54 @@ mount path only surfaces when the worker tries to clone (the repo card shows
 the failure). Without a configured LLM provider the run is structural-only,
 same as GitHub repositories.
 
+## Offline CLI
+
+`Tessera.Cli` ships a `tessera` console binary that runs the same parse →
+rule-based summarize → link → graph pipeline the worker runs, but fully
+offline: no database, no API, no AI provider, no upload. It needs only the
+.NET runtime, git, and the analyzer sidecar (for multi-language parsing).
+Output lands in a `tessera-report/` folder with Markdown + JSON artifacts.
+
+Arguments, options, and help are handled by [Spectre.Console.Cli](
+https://spectreconsole.net/cli/), and the terminal UI (banner, spinners,
+progress bars, summary/violation tables) is rendered with Spectre.Console.
+
+Build and run:
+
+```powershell
+dotnet build src/Tessera.Cli/Tessera.Cli.csproj
+dotnet run --project src/Tessera.Cli -- analyze /path/to/repo
+dotnet run --project src/Tessera.Cli -- --help
+```
+
+Parsing requires the analyzer sidecar (default `http://localhost:4350`, override
+with `--analyzer-url <url>`). Start it locally, or reuse the docker one — the
+`analyzers` service publishes `127.0.0.1:4350`:
+
+```powershell
+# in analyzers/
+npm install
+npm run dev
+```
+
+Commands:
+
+| Command | Purpose |
+|---------|---------|
+| `tessera analyze [path]` | Parse the repo at HEAD, write Markdown + JSON reports; `-o/--output <dir>` and `--analyzer-url <url>` |
+| `tessera report [dir]` | Regenerate the Markdown reports from an existing `report.json` |
+| `tessera rules validate <rules.yaml> [dir]` | Evaluate architecture rules against the report graph |
+
+Exit codes: `0` success, `1` rule violation, `2` usage/parse error, `3`
+sidecar/IO failure. Bare `tessera` (no command) and unknown commands exit `2`
+after showing usage.
+
+`report` and `rules validate` do not need the sidecar — they only read
+`report.json`, so they are CI-friendly. Rules reuse the server's rule engine
+(`ArchitectureRuleService.Parse` / `Evaluate`) and impact/cycle/top-dependency
+computations reuse the shared `GraphAlgorithms` helpers, so CLI results match
+the dashboard for the same snapshot.
+
 ## Status
 
 - [x] Scaffold .NET + tree-sitter sidecar + Docker Compose

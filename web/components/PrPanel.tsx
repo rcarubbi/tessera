@@ -51,7 +51,7 @@ export default function PrPanel({ repo, onRepoUpdated }: Props) {
   };
 
   const prUrl = (prNumber: number) =>
-    repo ? `https://github.com/${repo.owner}/${repo.name}/pull/${prNumber}` : "#";
+    repo ? `https://github.com/${repo.fullName}/pull/${prNumber}` : "#";
 
   return (
     <div className="flex flex-col gap-4">

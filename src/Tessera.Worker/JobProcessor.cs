@@ -44,6 +44,7 @@ public sealed class JobProcessor(
         var repo = await ClaimNextRepositoryAsync(db, leaseDuration, ct);
         if (repo is null)
         {
+            await ProcessIdlePrReviewsAsync(scope, ct);
             return;
         }
 
@@ -139,7 +140,6 @@ public sealed class JobProcessor(
 
         var pending = await db.PullRequestReviews.AsNoTracking()
             .Where(r => r.RepositoryId == repo.Id
-                && r.HeadSha == repo.LastProcessedCommit
                 && (r.Status == PrReviewStatus.Queued || r.Status == PrReviewStatus.Failed))
             .ToListAsync(ct);
 
@@ -151,6 +151,39 @@ public sealed class JobProcessor(
                 continue;
             }
             await prReviewService.ProcessAsync(repo, tracked, workDir, ct);
+        }
+    }
+
+    // Processes queued/failed PR reviews for idle repositories (no pending analysis). Reviews now run
+    // against the latest analyzed snapshot, so they no longer depend on a freshly completed pipeline.
+    private async Task ProcessIdlePrReviewsAsync(IServiceScope scope, CancellationToken ct)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<TesseraDbContext>();
+        var repoId = await db.PullRequestReviews.AsNoTracking()
+            .Where(r => r.Status == PrReviewStatus.Queued || r.Status == PrReviewStatus.Failed)
+            .Where(r => db.Snapshots.Any(s => s.RepositoryId == r.RepositoryId))
+            .GroupBy(r => r.RepositoryId)
+            .OrderBy(g => g.Min(r => r.UpdatedAt))
+            .Select(g => g.Key)
+            .FirstOrDefaultAsync(ct);
+        if (repoId == Guid.Empty)
+        {
+            return;
+        }
+
+        var repo = await db.Repositories.FirstOrDefaultAsync(r => r.Id == repoId, ct);
+        if (repo is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await ProcessPendingPrReviewsAsync(scope, repo, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Idle PR review processing failed for {repo}", repo.FullName);
         }
     }
 }

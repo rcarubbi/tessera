@@ -45,10 +45,10 @@ export default function Mermaid({ chart }: { chart: string }) {
   }
 
   return (
-    <div className="group relative my-3">
+    <div className="group relative my-3 aspect-[14/9]">
       <div
         ref={ref}
-        className="cursor-zoom-in overflow-auto rounded-md border border-transparent transition-colors hover:border-border"
+        className="h-full cursor-zoom-in overflow-auto rounded-md border border-border transition-colors hover:border-border"
         onClick={() => setOpen(true)}
       />
       <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-md border border-border bg-panel/90 px-2 py-0.5 text-[10px] text-dim opacity-0 transition-opacity group-hover:opacity-100">

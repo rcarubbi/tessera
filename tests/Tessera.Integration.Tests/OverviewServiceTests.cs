@@ -20,9 +20,8 @@ public sealed class OverviewServiceTests
         Assert.Equal(2, result.NodeCount);
         Assert.Contains("```mermaid", result.Overview);
         Assert.Contains("flowchart LR", result.Overview);
-        Assert.Contains("subgraph", result.Overview);
-        Assert.Contains(".NET / C#", result.Overview);
-        Assert.Contains("TypeScript / React", result.Overview);
+        Assert.Contains("### api", result.Overview);
+        Assert.Contains("### root", result.Overview);
     }
 
     [Fact]
@@ -36,7 +35,8 @@ public sealed class OverviewServiceTests
         Assert.Equal("deepseek/deepseek-chat", result.Model);
         Assert.Contains("## Summary\nok", overview);
         Assert.Contains("```mermaid\nflowchart LR", overview);
-        Assert.Contains("subgraph", overview);
+        Assert.Contains("### api", overview);
+        Assert.Contains("### root", overview);
         Assert.Contains("n0[\"Order\"]", overview);
         Assert.DoesNotContain("n0[Order]", overview);
         Assert.Equal(1, provider.Calls);

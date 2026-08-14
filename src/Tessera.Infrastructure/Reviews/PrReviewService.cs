@@ -73,18 +73,19 @@ public sealed class PrReviewService(
         }
 
         var headSnapshot = await db.Snapshots.AsNoTracking()
-            .Where(s => s.RepositoryId == repo.Id && s.CommitSha == review.HeadSha)
+            .Where(s => s.RepositoryId == repo.Id)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync(ct);
         if (headSnapshot is null)
         {
-            // Gating: head snapshot not ready yet; stays Queued until one matches.
+            // Gating: no analyzed snapshot yet; stays Queued until the repo is analyzed.
             return;
         }
 
         PrReport report;
         try
         {
+            await EnsureWorkDirClonedAsync(repo, workDir, ct);
             report = await ComputeReportAsync(repo, review, headSnapshot, workDir, ct);
         }
         catch (Exception ex)
@@ -168,6 +169,28 @@ public sealed class PrReviewService(
             rulesEvaluated,
             aiSummary,
             notes);
+    }
+
+    private async Task EnsureWorkDirClonedAsync(Repository repo, string workDir, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(repo.CloneUrl) || Directory.Exists(Path.Combine(workDir, ".git")))
+            {
+                return;
+            }
+            string? token = null;
+            if (repo.CloneUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)
+                && repo.InstallationId > 0)
+            {
+                token = await github.CreateInstallationAccessTokenAsync(repo.InstallationId, ct);
+            }
+            await git.EnsureCloneAsync(repo.CloneUrl, workDir, ct, token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not ensure clone for {repo} before PR review; continuing.", repo.FullName);
+        }
     }
 
     private async Task<IReadOnlyList<string>> GetChangedFilesAsync(string workDir, string baseSha, string headSha, CancellationToken ct)

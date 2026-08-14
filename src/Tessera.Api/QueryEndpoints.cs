@@ -138,6 +138,19 @@ public static class QueryEndpoints
             }
         });
 
+        app.MapGet("/api/repositories/{repositoryId:guid}/explain", async (
+            Guid repositoryId,
+            string? commit,
+            HttpContext context,
+            TesseraDbContext db,
+            ExplainerService explainer,
+            CancellationToken ct) =>
+        {
+            var guarded = await context.GuardRepoAsync(db, repositoryId, ct);
+            if (guarded is not null) return guarded;
+            return Results.Ok(await explainer.BuildAsync(repositoryId, commit, ct));
+        });
+
         app.MapGet("/api/repositories/{repositoryId:guid}/overview", async (
             Guid repositoryId,
             HttpContext context,
