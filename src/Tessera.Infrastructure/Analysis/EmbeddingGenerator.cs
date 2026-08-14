@@ -18,7 +18,8 @@ public interface IEmbeddingGenerator
         Guid snapshotId,
         Guid repositoryId,
         IReadOnlyList<KnowledgeNode> nodes,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? previousSnapshotId = null);
 }
 
 public sealed class EmbeddingGenerator(
@@ -38,7 +39,8 @@ public sealed class EmbeddingGenerator(
         Guid snapshotId,
         Guid repositoryId,
         IReadOnlyList<KnowledgeNode> nodes,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? previousSnapshotId = null)
     {
         var provider = providers.Embedding;
         var model = provider?.EmbeddingModel;
@@ -58,15 +60,17 @@ public sealed class EmbeddingGenerator(
             return 0;
         }
 
+        var reusable = await LoadReusableAsync(previousSnapshotId, model, ct);
+
         var generated = 0;
+        var reused = 0;
         var batch = new List<NodeEmbedding>(25);
         foreach (var node in missing)
         {
             ct.ThrowIfCancellationRequested();
-            await ThrottleAsync(ct);
-            try
+
+            if (reusable.TryGetValue(node.SemanticHash, out var cached))
             {
-                var vector = await provider.EmbedAsync(EmbeddableText(node), ct);
                 batch.Add(new NodeEmbedding
                 {
                     Id = Guid.NewGuid(),
@@ -74,15 +78,35 @@ public sealed class EmbeddingGenerator(
                     SnapshotId = snapshotId,
                     RepositoryId = repositoryId,
                     Model = model,
-                    Dimensions = vector.Length,
-                    Vector = Pack(vector),
+                    Dimensions = cached.Dimensions,
+                    Vector = cached.Vector,
                     CreatedAt = DateTimeOffset.UtcNow
                 });
-                generated++;
+                reused++;
             }
-            catch (Exception ex)
+            else
             {
-                log.LogWarning(ex, "Embedding failed for node {key}; continuing", node.Key);
+                await ThrottleAsync(ct);
+                try
+                {
+                    var vector = await provider.EmbedAsync(EmbeddableText(node), ct);
+                    batch.Add(new NodeEmbedding
+                    {
+                        Id = Guid.NewGuid(),
+                        NodeId = node.Id,
+                        SnapshotId = snapshotId,
+                        RepositoryId = repositoryId,
+                        Model = model,
+                        Dimensions = vector.Length,
+                        Vector = Pack(vector),
+                        CreatedAt = DateTimeOffset.UtcNow
+                    });
+                    generated++;
+                }
+                catch (Exception ex)
+                {
+                    log.LogWarning(ex, "Embedding failed for node {key}; continuing", node.Key);
+                }
             }
 
             if (batch.Count >= 25)
@@ -99,7 +123,34 @@ public sealed class EmbeddingGenerator(
             await db.SaveChangesAsync(ct);
         }
 
+        if (reused > 0)
+        {
+            log.LogInformation("Reused {reused} of {count} embeddings for snapshot {snapshotId}", reused, missing.Count, snapshotId);
+        }
+
         return generated;
+    }
+
+    private async Task<Dictionary<string, (byte[] Vector, int Dimensions)>> LoadReusableAsync(
+        Guid? previousSnapshotId,
+        string model,
+        CancellationToken ct)
+    {
+        if (previousSnapshotId is not { } prevId)
+        {
+            return new Dictionary<string, (byte[] Vector, int Dimensions)>(StringComparer.Ordinal);
+        }
+
+        var rows = await (from e in db.NodeEmbeddings.AsNoTracking()
+                          join n in db.KnowledgeNodes.AsNoTracking() on e.NodeId equals n.Id
+                          where e.SnapshotId == prevId && e.Model == model
+                          select new { n.SemanticHash, e.Vector, e.Dimensions })
+            .ToListAsync(ct);
+
+        return rows
+            .Where(r => !string.IsNullOrEmpty(r.SemanticHash))
+            .GroupBy(r => r.SemanticHash, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (g.First().Vector, g.First().Dimensions), StringComparer.Ordinal);
     }
 
     private async Task ThrottleAsync(CancellationToken ct)

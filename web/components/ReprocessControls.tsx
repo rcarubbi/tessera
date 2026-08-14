@@ -15,6 +15,7 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
   const [showOptions, setShowOptions] = useState(false);
   const [includeStatic, setIncludeStatic] = useState(false);
   const [includeAi, setIncludeAi] = useState(false);
+  const [includeIndexing, setIncludeIndexing] = useState(true);
   const [submitting, setSubmitting] = useState<"full" | "incremental" | null>(null);
   const [message, setMessage] = useState<{ tone: "good" | "danger"; text: string } | null>(null);
 
@@ -26,6 +27,7 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
         mode,
         includeStatic,
         includeAi,
+        includeIndexing,
       });
       setMessage({ tone: "good", text: mode === "full" ? "Full reprocess queued." : "Incremental reprocess queued." });
       onReprocessed();
@@ -96,20 +98,33 @@ export default function ReprocessControls({ repoId, fullName, disabled, onReproc
               </span>
               <span className="text-dim">Include AI analysis</span>
             </label>
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] select-none">
+              <span className="relative inline-flex">
+                <input
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={includeIndexing}
+                  onChange={(e) => setIncludeIndexing(e.target.checked)}
+                />
+                <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
+                <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
+              </span>
+              <span className="text-dim">Include indexing</span>
+            </label>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               className={`${btn} ${btnSmall} ${btnPrimary}`}
               onClick={() => start("incremental")}
-              disabled={disabled || submitting !== null || (!includeStatic && !includeAi)}
+              disabled={disabled || submitting !== null || (!includeStatic && !includeAi && !includeIndexing)}
               title="Re-analyze only nodes missing the selected analysis"
             >
               {submitting === "incremental" && <span className={spinner} />}
               Start incremental reprocess
             </button>
-            {!includeStatic && !includeAi && (
-              <span className="text-xs text-dim">Select at least one analysis option</span>
+            {!includeStatic && !includeAi && !includeIndexing && (
+              <span className="text-xs text-dim">Select at least one option</span>
             )}
           </div>
         </div>

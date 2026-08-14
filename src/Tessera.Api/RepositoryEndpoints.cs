@@ -102,10 +102,11 @@ public static class RepositoryEndpoints
             var mode = request?.Mode ?? ReprocessMode.Full;
             var includeStatic = request?.IncludeStatic ?? false;
             var includeAi = request?.IncludeAi ?? false;
+            var includeIndexing = request?.IncludeIndexing ?? false;
 
-            if (mode == ReprocessMode.Incremental && !includeStatic && !includeAi)
+            if (mode == ReprocessMode.Incremental && !includeStatic && !includeAi && !includeIndexing)
             {
-                return Results.BadRequest(new { error = "Incremental reprocess requires at least one analysis option (static and/or AI)." });
+                return Results.BadRequest(new { error = "Incremental reprocess requires at least one option (static, AI and/or indexing)." });
             }
 
             repo.IsConnected = true;
@@ -118,6 +119,7 @@ public static class RepositoryEndpoints
             repo.ReprocessMode = mode;
             repo.IncludeStaticAnalysis = includeStatic;
             repo.IncludeAiAnalysis = includeAi;
+            repo.IncludeIndexing = includeIndexing;
             repo.AnalysisStartedAt = null;
             repo.CompletedAt = null;
             repo.StageStartedAt = null;
@@ -164,7 +166,7 @@ public static class RepositoryEndpoints
     }
 }
 
-public sealed record ReprocessRequest(ReprocessMode Mode, bool IncludeStatic = false, bool IncludeAi = false);
+public sealed record ReprocessRequest(ReprocessMode Mode, bool IncludeStatic = false, bool IncludeAi = false, bool IncludeIndexing = false);
 
 public sealed record LocalRepositoryRequest(string Name, string CloneUrl, string? DefaultBranch);
 

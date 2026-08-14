@@ -30,6 +30,7 @@ public class Repository
     public ReprocessMode ReprocessMode { get; set; } = ReprocessMode.Full;
     public bool IncludeStaticAnalysis { get; set; }
     public bool IncludeAiAnalysis { get; set; }
+    public bool IncludeIndexing { get; set; }
     public string? RulesYaml { get; set; }
     public bool EnablePrComments { get; set; } = true;
     public DateTimeOffset? AnalysisStartedAt { get; set; }

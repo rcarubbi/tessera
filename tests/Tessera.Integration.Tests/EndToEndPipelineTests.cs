@@ -368,7 +368,8 @@ public sealed class EndToEndPipelineTests : IDisposable
             Guid snapshotId,
             Guid repositoryId,
             IReadOnlyList<KnowledgeNode> nodes,
-            CancellationToken ct = default) =>
+            CancellationToken ct = default,
+            Guid? previousSnapshotId = null) =>
             Task.FromResult(0);
     }
 

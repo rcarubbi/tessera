@@ -88,7 +88,7 @@ public sealed class AnalysisPipeline(
             var previousNodes = await LoadPreviousNodesAsync(repo, ct);
             var aiContent = await BuildAiContentAsync(parse, previousNodes, repo, ct);
 
-            if (repo.ReprocessMode == ReprocessMode.Incremental && aiContent.Count == 0)
+            if (repo.ReprocessMode == ReprocessMode.Incremental && !repo.IncludeIndexing && aiContent.Count == 0)
             {
                 repo.Status = ProcessingStatus.Completed;
                 repo.LastProcessedCommit = head;
@@ -395,6 +395,7 @@ public sealed class AnalysisPipeline(
         repo.ReprocessMode = ReprocessMode.Full;
         repo.IncludeStaticAnalysis = false;
         repo.IncludeAiAnalysis = false;
+        repo.IncludeIndexing = false;
     }
 
     private async Task PersistAsync(
@@ -516,7 +517,8 @@ public sealed class AnalysisPipeline(
 
         try
         {
-            var generated = await embeddingGenerator.GenerateAsync(snapshotId, repo.Id, composed.Nodes, ct);
+            var previousSnapshot = await ResolvePreviousSnapshotAsync(repo, ct);
+            var generated = await embeddingGenerator.GenerateAsync(snapshotId, repo.Id, composed.Nodes, ct, previousSnapshot?.Id);
             if (generated > 0)
             {
                 log.LogInformation("Generated {count} embeddings for snapshot {snapshotId}", generated, snapshotId);
