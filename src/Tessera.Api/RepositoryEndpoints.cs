@@ -47,13 +47,11 @@ public static class RepositoryEndpoints
             {
                 try
                 {
-                    foreach (var dir in Directory.EnumerateDirectories(root).Order(StringComparer.OrdinalIgnoreCase))
+                    foreach (var relative in LocalRepositoryValidator.FindGitRepositories(root).Order(StringComparer.OrdinalIgnoreCase))
                     {
-                        var gitPath = Path.Combine(dir, ".git");
-                        if (!Directory.Exists(gitPath) && !File.Exists(gitPath)) continue;
-
-                        var path = Path.Combine(root, Path.GetFileName(dir));
-                        repos.Add(new LocalRepoCandidate(Path.GetFileName(dir), path, registered.Contains(path)));
+                        // Forward slashes keep stored paths identical to what the Linux worker clones.
+                        var path = Path.Combine(root, relative).Replace(Path.DirectorySeparatorChar, '/');
+                        repos.Add(new LocalRepoCandidate(Path.GetFileName(relative), path, registered.Contains(path)));
                     }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -270,9 +268,39 @@ public static class LocalRepositoryValidator
     private static readonly System.Text.RegularExpressions.Regex NameRegex =
         new("^[A-Za-z0-9._-]{1,100}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    // Repos are discovered recursively below the mount root; deep enough for grouped checkouts,
+    // bounded so huge or cyclic trees cannot stall the listing.
+    private const int MaxDiscoveryDepth = 4;
+
     public static bool IsValidName(string name)
         => NameRegex.IsMatch(name);
 
     public static bool IsValidPath(string path)
         => path.StartsWith('/') && path.Length > 1 && !path.Contains("..");
+
+    public static IEnumerable<string> FindGitRepositories(string root)
+    {
+        var pending = new Queue<(string Dir, string Relative, int Depth)>();
+        pending.Enqueue((root, "", 0));
+        while (pending.Count > 0)
+        {
+            var (dir, relative, depth) = pending.Dequeue();
+            foreach (var sub in Directory.EnumerateDirectories(dir))
+            {
+                var subRelative = relative.Length == 0
+                    ? Path.GetFileName(sub)
+                    : $"{relative}/{Path.GetFileName(sub)}";
+
+                var gitPath = Path.Combine(sub, ".git");
+                if (Directory.Exists(gitPath) || File.Exists(gitPath))
+                {
+                    yield return subRelative;
+                }
+                else if (depth < MaxDiscoveryDepth)
+                {
+                    pending.Enqueue((sub, subRelative, depth + 1));
+                }
+            }
+        }
+    }
 }

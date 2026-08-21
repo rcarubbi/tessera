@@ -264,8 +264,9 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
             Directory.CreateDirectory(Path.Combine(root, "beta"));
             Directory.CreateDirectory(Path.Combine(root, "gamma"));
             File.WriteAllText(Path.Combine(root, "gamma", ".git"), "gitdir: /elsewhere");
+            Directory.CreateDirectory(Path.Combine(root, "nested", "deep", "repo", ".git"));
 
-            var alphaPath = Path.Combine(root, "alpha");
+            var alphaPath = Path.Combine(root, "alpha").Replace('\\', '/');
             await using (var db = CreateDb())
             {
                 db.Repositories.Add(new Repository
@@ -296,7 +297,7 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.Equal(root, doc.RootElement.GetProperty("root").GetString());
             var repos = doc.RootElement.GetProperty("repos");
-            Assert.Equal(2, repos.GetArrayLength());
+            Assert.Equal(3, repos.GetArrayLength());
 
             Assert.Equal("alpha", repos[0].GetProperty("name").GetString());
             Assert.Equal(alphaPath, repos[0].GetProperty("path").GetString());
@@ -304,6 +305,11 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
 
             Assert.Equal("gamma", repos[1].GetProperty("name").GetString());
             Assert.False(repos[1].GetProperty("registered").GetBoolean());
+
+            Assert.Equal("repo", repos[2].GetProperty("name").GetString());
+            Assert.Equal(
+                Path.Combine(root, "nested", "deep", "repo").Replace('\\', '/'),
+                repos[2].GetProperty("path").GetString());
         }
         finally
         {
