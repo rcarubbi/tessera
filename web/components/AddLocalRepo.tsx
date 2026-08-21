@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { apiPost, ApiError } from "@/lib/api";
-import { btn, btnPrimary, field, spinner } from "@/lib/ui";
+import { useEffect, useState } from "react";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { badge, badgeGreen, btn, btnPrimary, field, spinner } from "@/lib/ui";
+
+type AvailableRepo = { name: string; path: string; registered: boolean };
+type AvailableResponse = { root: string; repos: AvailableRepo[] };
 
 type Props = {
   onAdded: () => void;
@@ -10,11 +13,34 @@ type Props = {
 
 export default function AddLocalRepo({ onAdded }: Props) {
   const [open, setOpen] = useState(false);
+  const [available, setAvailable] = useState<AvailableResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ tone: "good" | "danger"; text: string } | null>(null);
+
+  const loadAvailable = () => {
+    setAvailable(null);
+    setLoadError(null);
+    setSelected(null);
+    apiGet<AvailableResponse>("/api/repositories/local/available")
+      .then(setAvailable)
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : (err as Error).message));
+  };
+
+  useEffect(() => {
+    if (open) loadAvailable();
+  }, [open]);
+
+  const pick = (repo: AvailableRepo) => {
+    setSelected(repo.name);
+    setName(repo.name);
+    setPath(repo.path);
+    setMessage(null);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,10 +52,11 @@ export default function AddLocalRepo({ onAdded }: Props) {
         cloneUrl: path.trim(),
         defaultBranch: defaultBranch.trim() || "main",
       });
-      setMessage({ tone: "good", text: "Local repository added. Run Analyze to start." });
+      setMessage({ tone: "good", text: "Local repository added. Analysis starts automatically." });
       setName("");
       setPath("");
       setDefaultBranch("main");
+      setSelected(null);
       setOpen(false);
       onAdded();
     } catch (err) {
@@ -56,6 +83,51 @@ export default function AddLocalRepo({ onAdded }: Props) {
               Point the worker at a git repo reachable from its container. No webhook, no push trigger — analysis runs
               manually via Analyze / Reprocess.
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm text-dim">Detected repositories</span>
+            {loadError !== null && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-danger">{loadError}</span>
+                <button type="button" className={`${btn} px-2 py-1 text-xs`} onClick={loadAvailable}>
+                  Retry
+                </button>
+              </div>
+            )}
+            {loadError === null && available === null && (
+              <div className="flex items-center gap-2 text-xs text-dim">
+                <span className={spinner} /> Scanning…
+              </div>
+            )}
+            {loadError === null && available !== null && available.repos.length === 0 && (
+              <div className="text-xs text-dim">
+                No git repositories found under <code className="font-mono">{available.root}</code>. Drop a repo folder
+                into the mounted directory and retry, or type the path below.
+              </div>
+            )}
+            {loadError === null && available !== null && available.repos.length > 0 && (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {available.repos.map((repo) => (
+                  <li key={repo.path}>
+                    <button
+                      type="button"
+                      onClick={() => pick(repo)}
+                      aria-pressed={selected === repo.name}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-border/30 ${
+                        selected === repo.name ? "bg-border/40" : ""
+                      }`}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-mono text-fg">{repo.name}</span>
+                        <span className="truncate text-xs text-dim">{repo.path}</span>
+                      </span>
+                      {repo.registered && <span className={`${badge} ${badgeGreen} shrink-0`}>added</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <label className="flex flex-col gap-1.5 text-sm">
@@ -99,7 +171,7 @@ export default function AddLocalRepo({ onAdded }: Props) {
               Add repository
             </button>
             <span className="text-xs text-dim">
-              The repo stays inactive until you run Analyze.
+              Analysis (clone → parse → snapshot) starts automatically.
             </span>
           </div>
 

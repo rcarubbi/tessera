@@ -44,7 +44,7 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
     }
 
     [Fact]
-    public async Task Admin_can_add_local_repository_inactive()
+    public async Task Admin_can_add_local_repository_connected_for_automatic_processing()
     {
         var suffix = Guid.NewGuid().ToString("N")[..6];
         var response = await AdminPostAsync(Payload($"myapp-{suffix}", $"/repos/local/myapp-{suffix}"));
@@ -56,7 +56,7 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
         Assert.Equal(0, repo.GitHubId);
         Assert.Equal(0, repo.InstallationId);
         Assert.Equal("local", repo.Owner);
-        Assert.False(repo.IsConnected);
+        Assert.True(repo.IsConnected);
         Assert.Equal(ProcessingStatus.Pending, repo.Status);
         Assert.Equal("admin", repo.CreatedBy);
         Assert.Equal("/repos/local/myapp-" + suffix, repo.CloneUrl);
@@ -244,6 +244,156 @@ public sealed class LocalRepositoryEndpointTests : IClassFixture<WebApplicationF
         var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Available_without_token_is_rejected()
+    {
+        var response = await _client.GetAsync("/api/repositories/local/available");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Available_lists_git_folders_and_marks_registered()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tessera-local-available-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "alpha", ".git"));
+            Directory.CreateDirectory(Path.Combine(root, "beta"));
+            Directory.CreateDirectory(Path.Combine(root, "gamma"));
+            File.WriteAllText(Path.Combine(root, "gamma", ".git"), "gitdir: /elsewhere");
+
+            var alphaPath = Path.Combine(root, "alpha");
+            await using (var db = CreateDb())
+            {
+                db.Repositories.Add(new Repository
+                {
+                    Id = Guid.NewGuid(),
+                    GitHubId = 0,
+                    Owner = "local",
+                    Name = "alpha",
+                    FullName = "alpha",
+                    DefaultBranch = "main",
+                    CloneUrl = alphaPath,
+                    InstallationId = 0,
+                    CreatedBy = "admin",
+                    IsConnected = false,
+                    Status = ProcessingStatus.Pending,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+                await db.SaveChangesAsync();
+            }
+
+            var client = _factory.WithWebHostBuilder(b => b.UseSetting("LocalRepos:Root", root)).CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/repositories/local/available");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AdminKey);
+            var response = await client.SendAsync(request);
+
+            response.EnsureSuccessStatusCode();
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(root, doc.RootElement.GetProperty("root").GetString());
+            var repos = doc.RootElement.GetProperty("repos");
+            Assert.Equal(2, repos.GetArrayLength());
+
+            Assert.Equal("alpha", repos[0].GetProperty("name").GetString());
+            Assert.Equal(alphaPath, repos[0].GetProperty("path").GetString());
+            Assert.True(repos[0].GetProperty("registered").GetBoolean());
+
+            Assert.Equal("gamma", repos[1].GetProperty("name").GetString());
+            Assert.False(repos[1].GetProperty("registered").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Delete_when_analysis_pending_then_conflict()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var created = await AdminPostAsync(Payload($"busy-{suffix}", $"/repos/local/busy-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/repositories/{id}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AdminKey);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await using var db = CreateDb();
+        Assert.True(await db.Repositories.AnyAsync(r => r.Id == id));
+    }
+
+    [Fact]
+    public async Task Delete_removes_repository_and_all_related_rows()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var created = await AdminPostAsync(Payload($"del-{suffix}", $"/repos/local/del-{suffix}"));
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+        var snapshotId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+
+        await using (var db = CreateDb())
+        {
+            var repo = await db.Repositories.SingleAsync(r => r.Id == id);
+            repo.Status = ProcessingStatus.Completed;
+            db.Snapshots.Add(new Snapshot { Id = snapshotId, RepositoryId = id, CommitSha = "abc123", RootHash = "root" });
+            db.KnowledgeNodes.Add(new KnowledgeNode
+            {
+                Id = nodeId,
+                RepositoryId = id,
+                SnapshotId = snapshotId,
+                Key = "k",
+                CommitSha = "abc123",
+                AnalyzedAt = DateTimeOffset.UtcNow
+            });
+            db.GraphEdges.Add(new GraphEdge
+            {
+                Id = Guid.NewGuid(),
+                RepositoryId = id,
+                SnapshotId = snapshotId,
+                FromNodeId = nodeId,
+                FromKey = "a",
+                ToNodeId = nodeId,
+                ToKey = "b"
+            });
+            db.KnowledgeNodeProvenances.Add(new KnowledgeNodeProvenance
+            {
+                Id = Guid.NewGuid(),
+                NodeId = nodeId,
+                CommitSha = "abc123",
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
+            db.NodeEmbeddings.Add(new NodeEmbedding
+            {
+                Id = Guid.NewGuid(),
+                NodeId = nodeId,
+                SnapshotId = snapshotId,
+                RepositoryId = id,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            db.ConversationMessages.Add(new ConversationMessage { Id = Guid.NewGuid(), RepositoryId = id });
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/repositories/{id}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AdminKey);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await using (var db = CreateDb())
+        {
+            Assert.False(await db.Repositories.AnyAsync(r => r.Id == id));
+            Assert.False(await db.Snapshots.AnyAsync(s => s.RepositoryId == id));
+            Assert.False(await db.KnowledgeNodes.AnyAsync(n => n.RepositoryId == id));
+            Assert.False(await db.GraphEdges.AnyAsync(e => e.RepositoryId == id));
+            Assert.False(await db.KnowledgeNodeProvenances.AnyAsync(p => p.NodeId == nodeId));
+            Assert.False(await db.NodeEmbeddings.AnyAsync(e => e.RepositoryId == id));
+            Assert.False(await db.ConversationMessages.AnyAsync(m => m.RepositoryId == id));
+        }
     }
 
     private Task<HttpResponseMessage> AdminPostAsync(object body)

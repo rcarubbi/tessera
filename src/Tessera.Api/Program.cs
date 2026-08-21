@@ -15,6 +15,7 @@ builder.Services.AddTesseraInfrastructure(builder.Configuration);
 builder.Services.AddHttpClient();
 builder.Services.Configure<GitHubOptions>(builder.Configuration.GetSection("GitHub"));
 builder.Services.Configure<GitHubOAuthOptions>(builder.Configuration.GetSection("GitHubOAuth"));
+builder.Services.Configure<LocalReposOptions>(builder.Configuration.GetSection("LocalRepos"));
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.AddSingleton<IGitHubAppClient, GitHubAppClient>();

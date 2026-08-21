@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
 import AddLocalRepo from "@/components/AddLocalRepo";
+import DeleteRepoButton from "@/components/DeleteRepoButton";
 import { useAuth } from "@/components/AuthContext";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { badge, card, cardError, field, statCard, statLabel, statValue } from "@/lib/ui";
@@ -178,6 +179,7 @@ export default function ReposPage() {
                         Track progress →
                       </Link>
                     </span>
+                    <DeleteRepoButton repoId={repo.id} onDeleted={load} onError={setError} />
                   </div>
                 </div>
               );

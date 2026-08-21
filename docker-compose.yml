@@ -58,6 +58,8 @@ services:
     volumes:
       - objectsdata:/app/objects
       - ./secrets/tessera-app.pem:/app/secrets/tessera-app.pem:ro
+      # Same local-repo mount as the worker (read-only) so the API can list available folders.
+      - ${LOCAL_REPOS_DIR:-./repos}:/repos/local:ro
     depends_on:
       postgres:
         condition: service_healthy
