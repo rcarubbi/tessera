@@ -107,7 +107,7 @@ export default function AddLocalRepo({ onAdded }: Props) {
               </div>
             )}
             {loadError === null && available !== null && available.repos.length > 0 && (
-              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+              <ul className="flex max-h-64 flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
                 {available.repos.map((repo) => (
                   <li key={repo.path}>
                     <button

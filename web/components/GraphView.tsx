@@ -442,7 +442,7 @@ export default function GraphView({
         <div
           ref={wrapRef}
           className="relative"
-          style={{ height: "calc(100vh - 240px)", minHeight: 480 }}
+          style={{ height: "calc(90vh - 240px)", minHeight: 480 }}
         >
           <GraphCanvas
             ref={graphRef}
