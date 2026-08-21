@@ -12,7 +12,7 @@ namespace Tessera.Infrastructure.Ai;
 
 public sealed class AiSummarizer : ISemanticSummarizer
 {
-    public const string PromptVersionConst = "2.1.0";
+    public const string PromptVersionConst = "2.2.0";
 
     private static readonly Regex ConfidenceRegex = new(
         @"(?im)^\s*confidence\s*[:=-]?\s*([0-9]+(?:\.[0-9]+)?)\s*$",
@@ -139,6 +139,9 @@ public sealed class AiSummarizer : ISemanticSummarizer
             under the header `## Class diagram`. For a method/function entity, add a Mermaid
             `sequenceDiagram` block under the header `## Sequence diagram`. The diagram must be wrapped
             in ```mermaid fences and must reflect the entity's structure and its main relationships.
+            In `classDiagram` member lines never use the characters `{`, `}` or `;`: write compound
+            or generic types as plain text instead (e.g. `+homeTeam: object`, `+items: List~int~`),
+            one member per line.
             Keep the diagram small and readable: at most 15 nodes and 15 edges. Prefer the most
             important direct relationships over exhaustive ones; never list every consumer.
             ## Architecture
