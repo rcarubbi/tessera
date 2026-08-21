@@ -5,9 +5,10 @@ import dynamic from "next/dynamic";
 import { apiGet } from "@/lib/api";
 import type { Graph, GraphEdge, GraphNode } from "@/lib/types";
 import type { GraphCanvasRef, InternalGraphNode } from "reagraph";
+import { kindIcon } from "@/lib/nodeIcons";
 import { badge, card, cardError, select, spinner } from "@/lib/ui";
 
-const GraphCanvas = dynamic(() => import("reagraph").then((m) => m.GraphCanvas), {
+const TesseraGraphCanvas = dynamic(() => import("./TesseraGraphCanvas"), {
   ssr: false,
 });
 
@@ -57,7 +58,17 @@ const GRAPH_THEME = {
   },
   arrow: { fill: "#2d333b", activeFill: "#58a6ff" },
   lasso: { border: "1px solid #58a6ff", background: "rgba(88,166,255,0.1)" },
+  cluster: {
+    fill: "rgba(22,27,34,0.4)",
+    stroke: "#30363d",
+    opacity: 1,
+    selectedOpacity: 1,
+    inactiveOpacity: 0.18,
+    label: { stroke: "#0d1117", color: "#8b949e", activeColor: "#58a6ff", fontSize: 8 },
+  },
 };
+
+const moduleOf = (path: string): string => path.split("/").slice(0, -1).join("/") || ".";
 
 export default function GraphView({
   repoId,
@@ -79,7 +90,8 @@ export default function GraphView({
   const [module, setModule] = useState<string>("");
   const [edgeTypes, setEdgeTypes] = useState<Set<string>>(new Set());
   const [expandDepth, setExpandDepth] = useState(1);
-  const [showMethods, setShowMethods] = useState(true);
+  const [clusterOn, setClusterOn] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [hideTests, setHideTests] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>("");
   const [tierFilter, setTierFilter] = useState<string>("");
@@ -155,8 +167,7 @@ export default function GraphView({
     if (!graph) return [] as string[];
     const set = new Set<string>();
     for (const n of graph.nodes) {
-      const dir = n.path.split("/").slice(0, -1).join("/") || ".";
-      set.add(dir);
+      set.add(moduleOf(n.path));
     }
     return [...set].sort();
   }, [graph]);
@@ -166,11 +177,10 @@ export default function GraphView({
     return graph.nodes.filter(
       (n) =>
         (!module || n.path.startsWith(module)) &&
-        (showMethods || (n.kind !== "Method" && n.kind !== "Function")) &&
         (!hideTests || !n.isTest) &&
         (!tierFilter || n.tier === tierFilter),
     );
-  }, [graph, module, showMethods, hideTests, sourceFilter, tierFilter]);
+  }, [graph, module, hideTests, tierFilter]);
 
   const visibleKeys = useMemo(() => new Set(visibleNodes.map((n) => n.key)), [visibleNodes]);
 
@@ -186,13 +196,27 @@ export default function GraphView({
     );
   }, [graph, edgeTypes, visibleKeys, sourceFilter, tierFilter]);
 
+  const containerIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of visibleEdges) {
+      if (e.type === "HasMethod") set.add(e.from);
+    }
+    return set;
+  }, [visibleEdges]);
+
+  const collapsedNodeIds = useMemo(
+    () => [...containerIds].filter((id) => !expandedIds.has(id)),
+    [containerIds, expandedIds],
+  );
+
   const nodes = useMemo(
     () =>
       visibleNodes.map((n) => ({
         id: n.key,
         label: n.symbol,
         fill: KIND_COLORS[n.kind] ?? "#8b949e",
-        data: n,
+        icon: kindIcon(n.kind),
+        data: { ...n, cluster: moduleOf(n.path) },
       })),
     [visibleNodes],
   );
@@ -252,9 +276,31 @@ export default function GraphView({
   const onNodeClick = useCallback(
     (node: InternalGraphNode) => {
       onSelect(node.id);
+      if (containerIds.has(node.id)) {
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          next.add(node.id);
+          return next;
+        });
+      }
     },
-    [onSelect],
+    [onSelect, containerIds],
   );
+
+  const onNodeDoubleClick = useCallback(
+    (node: InternalGraphNode) => {
+      if (!containerIds.has(node.id)) return;
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(node.id);
+        return next;
+      });
+    },
+    [containerIds],
+  );
+
+  const expandAllMembers = () => setExpandedIds(new Set(containerIds));
+  const collapseAllMembers = () => setExpandedIds(new Set());
 
   const onNodePointerOver = useCallback(
     (node: InternalGraphNode, event: { nativeEvent: PointerEvent }) => {
@@ -352,18 +398,37 @@ export default function GraphView({
                 <option value="low-confidence">Low confidence</option>
               </select>
             </label>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-dim">Members</span>
+              <div className="flex gap-1 pb-1">
+                <button
+                  type="button"
+                  onClick={expandAllMembers}
+                  className="cursor-pointer rounded-md border border-border bg-inset px-2 py-1 text-xs text-dim transition-colors hover:text-fg"
+                >
+                  Expand all
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAllMembers}
+                  className="cursor-pointer rounded-md border border-border bg-inset px-2 py-1 text-xs text-dim transition-colors hover:text-fg"
+                >
+                  Collapse all
+                </button>
+              </div>
+            </div>
             <label className="flex cursor-pointer items-center gap-2 pb-1 text-[13px] select-none">
               <span className="relative inline-flex">
                 <input
                   type="checkbox"
                   className="peer sr-only"
-                  checked={showMethods}
-                  onChange={(e) => setShowMethods(e.target.checked)}
+                  checked={clusterOn}
+                  onChange={(e) => setClusterOn(e.target.checked)}
                 />
                 <span className="h-4 w-7 rounded-full bg-inset ring-1 ring-border transition-colors peer-checked:bg-accent" />
                 <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-fg transition-transform peer-checked:translate-x-3" />
               </span>
-              <span className="text-dim">Show method nodes</span>
+              <span className="text-dim">Group by module</span>
             </label>
             <label className="flex cursor-pointer items-center gap-2 pb-1 text-[13px] select-none">
               <span className="relative inline-flex">
@@ -444,7 +509,7 @@ export default function GraphView({
           className="relative"
           style={{ height: "calc(90vh - 240px)", minHeight: 480 }}
         >
-          <GraphCanvas
+          <TesseraGraphCanvas
             ref={graphRef}
             nodes={nodes}
             edges={edges}
@@ -455,7 +520,10 @@ export default function GraphView({
             labelType="nodes"
             edgeArrowPosition="none"
             cameraMode="pan"
+            collapsedNodeIds={collapsedNodeIds}
+            clusterAttribute={clusterOn ? "cluster" : undefined}
             onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
             onNodePointerOver={onNodePointerOver}
             onNodePointerOut={onNodePointerOut}
           />
@@ -518,7 +586,7 @@ export default function GraphView({
 
         <div className="border-t border-border bg-inset px-2.5 py-1.5 text-xs text-dim">
           {graph.nodes.length} nodes · {graph.edges.length} edges ·{" "}
-          {selectedKey ? `focusing ${selectedKey}` : "drag to pan · wheel to zoom · click a node to inspect"}
+          {selectedKey ? `focusing ${selectedKey}` : "drag to pan · wheel to zoom · click a class to expand members · double-click to collapse"}
           <span className="ml-3 inline-flex items-center gap-3">
             <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-[#2d333b]" /> fact</span>
             <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-[#d29922]" /> inference</span>
