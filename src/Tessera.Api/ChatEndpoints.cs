@@ -154,14 +154,18 @@ public static class ChatEndpoints
         });
     }
 
+    // Web defaults (camelCase) match what the dashboard expects; the history endpoints get this
+    // automatically from minimal API binding, manual SSE serialization must opt in.
+    private static readonly JsonSerializerOptions SseJsonOptions = new(JsonSerializerDefaults.Web);
+
     private static string Sse(ChatStreamItem item)
     {
         var payload = item.Kind switch
         {
-            ChatStreamKind.Mode => JsonSerializer.Serialize(new { mode = item.Mode.ToString() }),
-            ChatStreamKind.Warnings => JsonSerializer.Serialize(item.Warnings),
-            ChatStreamKind.Delta => JsonSerializer.Serialize(new { text = item.Text }),
-            _ => JsonSerializer.Serialize(item.Citations)
+            ChatStreamKind.Mode => JsonSerializer.Serialize(new { mode = item.Mode.ToString() }, SseJsonOptions),
+            ChatStreamKind.Warnings => JsonSerializer.Serialize(item.Warnings, SseJsonOptions),
+            ChatStreamKind.Delta => JsonSerializer.Serialize(new { text = item.Text }, SseJsonOptions),
+            _ => JsonSerializer.Serialize(item.Citations, SseJsonOptions)
         };
         var name = item.Kind switch
         {
